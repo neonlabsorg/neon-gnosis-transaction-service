@@ -139,6 +139,14 @@ MASTER_COPIES: Dict[EthereumNetwork, List[Tuple[str, int, str]]] = {
         ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 8485899, '1.3.0+L2'),
         ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 8485903, '1.3.0'),
     ],
+    EthereumNetwork.MOONBASE: [
+        ('0x0cC8a3a24727Fca7162De39F7dBD281576d4e1B3', 632449, '1.3.0+L2'),
+        ('0xE88b05409C27686EF28F9905d345B8dE56dF50DE', 632469, '1.3.0'),
+    ],
+    EthereumNetwork.MOONRIVER: [
+        ('0x293557aAaBfeB45859366e42fc8AF80291425975', 407450, '1.3.0+L2'),
+        ('0xdB6FC7603DdC91F027379267A3549D28E65484D5', 407452, '1.3.0'),
+    ],
 }
 
 PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
@@ -192,6 +200,12 @@ PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
     ],
     EthereumNetwork.BINANCE: [
         ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 8485873),  # v1.3.0
+    ],
+    EthereumNetwork.MOONBASE: [
+        ('0x4e84bA733D2456477bEFBC643E8905e9744D16C1', 632145),  # v1.3.0
+    ],
+    EthereumNetwork.MOONRIVER: [
+        ('0xAADFe7925b0Cad895665aDE74f5848043B8c4b7D', 407438),  # v1.3.0
     ],
 }
 
