@@ -3,7 +3,7 @@
 # Create Dockerfiles for components
 for file in transaction_web transaction_worker transaction_scheduler
 do
-  cp docker/web/Dockerfile docker-build/$file.app
+  cp docker/web/Dockerfile .codebuild/$file.app
 done
 
 # Build Docker images
