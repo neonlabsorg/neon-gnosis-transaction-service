@@ -11,3 +11,4 @@ do
   docker tag $image:latest $repository-$image:`date +%Y-%m-%d--%H-%M-%S`
   docker push $repository-$image:`date +%Y-%m-%d--%H-%M-%S`
 done
+
