@@ -12,4 +12,3 @@ do
   tag=$(basename -- "$file" ".${file##*.}")
   docker build -t $tag -f $file .
 done
-
