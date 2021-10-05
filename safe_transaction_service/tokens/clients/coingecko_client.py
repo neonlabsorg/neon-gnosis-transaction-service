@@ -31,6 +31,7 @@ class CoingeckoClient:
         return network in (EthereumNetwork.MAINNET,
                            EthereumNetwork.BINANCE,
                            EthereumNetwork.MATIC,
+                           EthereumNetwork.MOON_MOONBASE,
                            EthereumNetwork.XDAI)
 
     def _get_price(self, url: str, name: str):
@@ -78,3 +79,6 @@ class CoingeckoClient:
 
     def get_matic_usd_price(self) -> float:
         return self.get_price('matic-network')
+
+    def get_movr_usd_price(self) -> float:
+        return self.get_price('moonriver')

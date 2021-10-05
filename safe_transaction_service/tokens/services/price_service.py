@@ -129,6 +129,12 @@ class PriceService:
             except CannotGetPrice:
                 return self.coingecko_client.get_matic_usd_price()
 
+    def get_movr_usd_price(self) -> float:
+        try:
+            return self.coingecko_client.get_movr_usd_price()
+        except CannotGetPrice:
+            return self.coingecko_client.get_movr_usd_price()
+
     @cachedmethod(cache=operator.attrgetter('cache_eth_price'))
     @cache_memoize(60 * 30, prefix='balances-get_eth_usd_price')  # 30 minutes
     def get_eth_usd_price(self) -> float:
@@ -149,6 +155,8 @@ class PriceService:
             return self.get_ewt_usd_price()
         elif self.ethereum_network in (EthereumNetwork.MATIC, EthereumNetwork.MUMBAI):
             return self.get_matic_usd_price()
+        elif self.ethereum_network in (EthereumNetwork.MOON_MOONBASE):
+            return self.get_movr_usd_price()
         elif self.ethereum_network == EthereumNetwork.BINANCE:
             return self.get_binance_usd_price()
         else:
