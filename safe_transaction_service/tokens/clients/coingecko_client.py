@@ -36,6 +36,7 @@ class CoingeckoClient:
                            EthereumNetwork.BINANCE,
                            EthereumNetwork.MATIC,
                            EthereumNetwork.MOON_MOONRIVER,
+                           EthereumNetwork.MOON_MOONBASE,
                            EthereumNetwork.XDAI)
 
     def _get_price(self, url: str, name: str):
