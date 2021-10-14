@@ -21,6 +21,10 @@ class CoingeckoClient:
             self.asset_platform = 'binance-smart-chain'
         elif network == EthereumNetwork.MATIC:
             self.asset_platform = 'polygon-pos'
+        elif network == EthereumNetwork.MOON_MOONRIVER:
+            self.asset_platform = 'moonriver'
+        elif network == EthereumNetwork.MOON_MOONBASE:
+            self.asset_platform = 'moonriver'
         elif network == EthereumNetwork.XDAI:
             self.asset_platform = 'xdai'
         else:
@@ -31,7 +35,7 @@ class CoingeckoClient:
         return network in (EthereumNetwork.MAINNET,
                            EthereumNetwork.BINANCE,
                            EthereumNetwork.MATIC,
-                           EthereumNetwork.MOON_MOONBASE,
+                           EthereumNetwork.MOON_MOONRIVER,
                            EthereumNetwork.XDAI)
 
     def _get_price(self, url: str, name: str):

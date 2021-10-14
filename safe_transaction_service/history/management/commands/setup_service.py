@@ -139,10 +139,6 @@ MASTER_COPIES: Dict[EthereumNetwork, List[Tuple[str, int, str]]] = {
         ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 8485899, '1.3.0+L2'),
         ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 8485903, '1.3.0'),
     ],
-    EthereumNetwork.MOON_MOONBASE: [
-        ('0x0cC8a3a24727Fca7162De39F7dBD281576d4e1B3', 632449, '1.3.0+L2'),
-        ('0xE88b05409C27686EF28F9905d345B8dE56dF50DE', 632469, '1.3.0'),
-    ],
     EthereumNetwork.CELO: [
         ('0xfb1bffC9d739B8D520DaF37dF666da4C687191EA', 8944350, '1.3.0+L2'),
         ('0x69f4D1788e39c87893C980c06EdF4b7f686e2938', 8944351, '1.3.0'),
@@ -152,12 +148,12 @@ MASTER_COPIES: Dict[EthereumNetwork, List[Tuple[str, int, str]]] = {
         ('0x69f4D1788e39c87893C980c06EdF4b7f686e2938', 4_949_512, '1.3.0'),
     ],
     EthereumNetwork.MOON_MOONRIVER: [
-        ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 707_738, '1.3.0+L2'),
-        ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 707_741, '1.3.0'),
+        ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 707738, '1.3.0+L2'),
+        ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 707741, '1.3.0'),
     ],
     EthereumNetwork.MOON_MOONBASE: [
-        ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 939_244, '1.3.0+L2'),
-        ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 939_246, '1.3.0'),
+        ('0x3E5c63644E683549055b9Be8653de26E0B4CD36E', 939244, '1.3.0+L2'),
+        ('0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', 939246, '1.3.0'),
     ],
 }
 
@@ -213,9 +209,6 @@ PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
     EthereumNetwork.BINANCE: [
         ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 8485873),  # v1.3.0
     ],
-    EthereumNetwork.MOON_MOONBASE: [
-        ('0x4e84bA733D2456477bEFBC643E8905e9744D16C1', 632145),  # v1.3.0
-    ],
     EthereumNetwork.CELO: [
         ('0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC', 8944342),  # v1.3.0
     ],
@@ -223,10 +216,10 @@ PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
         ('0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC', 4_949_487),  # v1.3.0
     ],
     EthereumNetwork.MOON_MOONRIVER: [
-        ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 707_721),  # v1.3.0
+        ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 707721),  # v1.3.0
     ],
     EthereumNetwork.MOON_MOONBASE: [
-        ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 939_239),  # v1.3.0
+        ('0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2', 939239),  # v1.3.0
     ],
 }
 
