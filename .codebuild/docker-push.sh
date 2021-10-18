@@ -5,7 +5,7 @@ repository=$1
 
 # Push Docker images to the repository
 now=`date +%Y-%m-%d--%H-%M-%S`
-for image in relay_nginx relay_web relay_worker relay_scheduler
+for image in transaction_nginx transaction_web transaction_worker transaction_scheduler
 do
   docker tag $image:latest $repository-$image:latest
   docker push $repository-$image:latest
