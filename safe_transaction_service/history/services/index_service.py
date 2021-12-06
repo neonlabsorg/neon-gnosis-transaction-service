@@ -152,7 +152,7 @@ class IndexService:
 
         # Get transactions for hashes not in db
         fetched_txs = self.ethereum_client.get_transactions(tx_hashes_not_in_db)
-        block_numbers = set()
+        block_hashes = set()
         txs = []
         for tx_hash, tx in zip(tx_hashes_not_in_db, fetched_txs):
             tx = tx or self.ethereum_client.get_transaction(
@@ -162,31 +162,31 @@ class IndexService:
                 raise TransactionNotFoundException(
                     f"Cannot find tx with tx-hash={HexBytes(tx_hash).hex()}"
                 )
-            elif tx.get("blockNumber") is None:
+            elif tx.get("blockHash") is None:
                 raise TransactionWithoutBlockException(
-                    f"Cannot find blockNumber for tx with "
+                    f"Cannot find blockHash for tx with "
                     f"tx-hash={HexBytes(tx_hash).hex()}"
                 )
-            block_numbers.add(tx["blockNumber"])
+            block_hashes.add(tx["blockHash"].hex())
             txs.append(tx)
 
-        blocks = self.ethereum_client.get_blocks(block_numbers)
+        blocks = self.ethereum_client.get_blocks(block_hashes)
         block_dict = {}
-        for block_number, block in zip(block_numbers, blocks):
+        for block_hash, block in zip(block_hashes, blocks):
             block = block or self.ethereum_client.get_block(
-                block_number
+                block_hash
             )  # Retry fetching if failed
             if not block:
                 raise BlockNotFoundException(
-                    f"Block with number={block_number} was not found"
+                    f"Block with hash={block_hash} was not found"
                 )
-            assert block_number == block["number"]
-            block_dict[block["number"]] = block
+            assert block_hash == block["hash"].hex()
+            block_dict[block["hash"]] = block
 
         # Create new transactions or update them if they have no receipt
         current_block_number = self.ethereum_client.current_block_number
         for tx, tx_receipt in zip(txs, tx_receipts):
-            block = block_dict.get(tx["blockNumber"])
+            block = block_dict[tx["blockHash"]]
             confirmed = (
                 current_block_number - block["number"]
             ) >= self.eth_reorg_blocks
@@ -272,7 +272,8 @@ class IndexService:
     def reindex_master_copies(
         self,
         from_block_number: int,
-        block_process_limit: int = 1000,
+        to_block_number: Optional[int] = None,
+        block_process_limit: int = 100,
         addresses: Optional[ChecksumAddress] = None,
     ):
         """
@@ -280,10 +281,13 @@ class IndexService:
         while reindexing
 
         :param from_block_number: Block number to start indexing from
+        :param to_block_number: Block number to stop indexing on
         :param block_process_limit: Number of blocks to process each time
         :param addresses: Master Copy or Safes(for L2 event processing) addresses. If not provided,
             all master copies will be used
         """
+        assert (not to_block_number) or to_block_number > from_block_number
+
         from ..indexers import (
             EthereumIndexer,
             InternalTxIndexerProvider,
@@ -310,10 +314,15 @@ class IndexService:
         if not addresses:
             logger.warning("No addresses to process")
         else:
-            logger.info("Start reindexing addresses %s", addresses)
+            logger.info("Start reindexing Safe Master Copy addresses %s", addresses)
             current_block_number = ethereum_client.current_block_number
+            stop_block_number = (
+                min(current_block_number, to_block_number)
+                if to_block_number
+                else current_block_number
+            )
             block_number = from_block_number
-            while block_number < current_block_number:
+            while block_number < stop_block_number:
                 elements = indexer.find_relevant_elements(
                     addresses, block_number, block_number + block_process_limit
                 )

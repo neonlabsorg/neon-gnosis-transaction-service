@@ -93,7 +93,6 @@ class TestCommands(TestCase):
         self.assertIn("Created webhook for", buf.getvalue())
 
     def test_index_erc20(self):
-
         command = "index_erc20"
         buf = StringIO()
         with self.assertLogs(logger=task_logger) as cm:
@@ -197,7 +196,7 @@ class TestCommands(TestCase):
                     stdout=buf,
                 )
                 self.assertIn(
-                    f"Start reindexing addresses {[safe_master_copy.address]}",
+                    f"Start reindexing Safe Master Copy addresses {[safe_master_copy.address]}",
                     cm.output[0],
                 )
                 self.assertIn("found 0 traces/events", cm.output[1])
@@ -239,7 +238,7 @@ class TestCommands(TestCase):
                         stdout=buf,
                     )
                     self.assertIn(
-                        f"Start reindexing addresses {[safe_l2_master_copy.address]}",
+                        f"Start reindexing Safe Master Copy addresses {[safe_l2_master_copy.address]}",
                         cm.output[0],
                     )
                     self.assertIn("found 0 traces/events", cm.output[1])

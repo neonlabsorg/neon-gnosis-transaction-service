@@ -26,13 +26,9 @@ class DelegateListFilter(filters.FilterSet):
 
 class TransferListFilter(filters.FilterSet):
     _from = django_filters.CharFilter()
-    block_number = django_filters.NumberFilter(field_name="block_number")
-    block_number__gt = django_filters.NumberFilter(
-        field_name="block_number", lookup_expr="gt"
-    )
-    block_number__lt = django_filters.NumberFilter(
-        field_name="block_number", lookup_expr="lt"
-    )
+    block_number = django_filters.NumberFilter(field_name="block")
+    block_number__gt = django_filters.NumberFilter(field_name="block", lookup_expr="gt")
+    block_number__lt = django_filters.NumberFilter(field_name="block", lookup_expr="lt")
     execution_date__gte = django_filters.IsoDateTimeFilter(
         field_name="execution_date", lookup_expr="gte"
     )
@@ -48,29 +44,29 @@ class TransferListFilter(filters.FilterSet):
     to = django_filters.CharFilter()
     token_address = django_filters.CharFilter()
     transaction_hash = django_filters.CharFilter(field_name="transaction_hash")
-    value = django_filters.NumberFilter(field_name="value")
-    value__gt = django_filters.NumberFilter(field_name="value", lookup_expr="gt")
-    value__lt = django_filters.NumberFilter(field_name="value", lookup_expr="lt")
+    value = django_filters.NumberFilter(field_name="_value")
+    value__gt = django_filters.NumberFilter(field_name="_value", lookup_expr="gt")
+    value__lt = django_filters.NumberFilter(field_name="_value", lookup_expr="lt")
     erc20 = django_filters.BooleanFilter(method="filter_erc20")
     erc721 = django_filters.BooleanFilter(method="filter_erc721")
     ether = django_filters.BooleanFilter(method="filter_ether")
 
     def filter_erc20(self, queryset, name: str, value: bool):
-        query = ~Q(value=None) & ~Q(token_address=None)
+        query = ~Q(_value=None) & ~Q(token_address=None)
         if value:
             return queryset.filter(query)
         else:
             return queryset.exclude(query)
 
     def filter_erc721(self, queryset, name: str, value: bool):
-        query = ~Q(token_id=None)
+        query = ~Q(_token_id=None)
         if value:
             return queryset.filter(query)
         else:
             return queryset.exclude(query)
 
     def filter_ether(self, queryset, name: str, value: bool):
-        query = ~Q(value=None) & Q(token_address=None)
+        query = ~Q(_value=None) & Q(token_address=None)
         if value:
             return queryset.filter(query)
         else:

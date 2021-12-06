@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 from django.conf import settings
 from django.db.models import Count
@@ -25,6 +25,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from web3 import Web3
 
+from gnosis.eth import EthereumClient, EthereumClientProvider
 from gnosis.eth.constants import NULL_ADDRESS
 from gnosis.safe import CannotEstimateGas
 
@@ -34,6 +35,8 @@ from safe_transaction_service.utils.utils import parse_boolean_query_param
 
 from . import filters, pagination, serializers
 from .models import (
+    ERC20Transfer,
+    ERC721Transfer,
     InternalTx,
     ModuleTransaction,
     MultisigConfirmation,
@@ -90,6 +93,50 @@ class AboutView(APIView):
             },
         }
         return Response(content)
+
+
+class AboutEthereumRPCView(APIView):
+    """
+    Returns information about ethereum RPC the service is using
+    """
+
+    renderer_classes = (JSONRenderer,)
+
+    def _get_info(self, ethereum_client: EthereumClient) -> Dict[str, Any]:
+        try:
+            client_version = ethereum_client.w3.clientVersion
+        except (IOError, ValueError):
+            client_version = ""
+
+        ethereum_network = ethereum_client.get_network()
+        return {
+            "version": client_version,
+            "block_number": ethereum_client.current_block_number,
+            "chain_id": ethereum_network.value,
+            "chain": ethereum_network.name,
+            "syncing": ethereum_client.w3.eth.syncing,
+        }
+
+    @method_decorator(cache_page(15))  # 15 seconds
+    def get(self, request, format=None):
+        """
+        Get information about the Ethereum RPC node used by the service
+        """
+        ethereum_client = EthereumClientProvider()
+        return Response(self._get_info(ethereum_client))
+
+
+class AboutEthereumTracingRPCView(AboutEthereumRPCView):
+    @method_decorator(cache_page(15))  # 15 seconds
+    def get(self, request, format=None):
+        """
+        Get information about the Ethereum Tracing RPC node used by the service (if any configured)
+        """
+        if not settings.ETHEREUM_TRACING_NODE_URL:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        else:
+            ethereum_client = EthereumClient(settings.ETHEREUM_TRACING_NODE_URL)
+            return Response(self._get_info(ethereum_client))
 
 
 class AnalyticsMultisigTxsByOriginListView(ListAPIView):
@@ -591,7 +638,7 @@ class SafeDelegateListView(ListCreateAPIView):
         signer will update the label or delegator if different.
         For the signature we are using TOTP with `T0=0` and `Tx=3600`. TOTP is calculated by taking the
         Unix UTC epoch time (no milliseconds) and dividing by 3600 (natural division, no decimals)
-        For signature this hash need to be signed: keccak(address + str(int(current_epoch // 3600)))
+        For signature this hash need to be signed: keccak(checksummed address + str(int(current_epoch // 3600)))
         For example:
              - We want to add the delegate `0x132512f995866CcE1b0092384A6118EDaF4508Ff` and `epoch=1586779140`.
              - `TOTP = epoch // 3600 = 1586779140 // 3600 = 440771`
@@ -713,7 +760,7 @@ class DelegateListView(ListCreateAPIView):
         signer will update the label or delegator if different.
         For the signature we are using TOTP with `T0=0` and `Tx=3600`. TOTP is calculated by taking the
         Unix UTC epoch time (no milliseconds) and dividing by 3600 (natural division, no decimals)
-        For signature this hash need to be signed: keccak(address + str(int(current_epoch // 3600)))
+        For signature this hash need to be signed: keccak(checksummed address + str(int(current_epoch // 3600)))
         For example:
              - We want to add the delegate `0x132512f995866CcE1b0092384A6118EDaF4508Ff` and `epoch=1586779140`.
              - `TOTP = epoch // 3600 = 1586779140 // 3600 = 440771`
@@ -785,14 +832,17 @@ class SafeTransferListView(ListAPIView):
         return transfers
 
     def get_transfers(self, address: str):
-        tokens_queryset = super().filter_queryset(
-            InternalTx.objects.token_txs_for_address(address)
+        erc20_queryset = self.filter_queryset(
+            ERC20Transfer.objects.to_or_from(address).token_txs()
         )
-        ether_queryset = super().filter_queryset(
+        erc721_queryset = self.filter_queryset(
+            ERC721Transfer.objects.to_or_from(address).token_txs()
+        )
+        ether_queryset = self.filter_queryset(
             InternalTx.objects.ether_txs_for_address(address)
         )
         return InternalTx.objects.union_ether_and_token_txs(
-            tokens_queryset, ether_queryset
+            erc20_queryset, erc721_queryset, ether_queryset
         )
 
     def get_queryset(self):
@@ -818,7 +868,7 @@ class SafeTransferListView(ListAPIView):
 
     @swagger_auto_schema(
         responses={
-            200: serializers.TransferResponseSerializer(many=True),
+            200: serializers.TransferWithTokenInfoResponseSerializer(many=True),
             422: "Safe address checksum not valid",
         }
     )
@@ -842,7 +892,7 @@ class SafeTransferListView(ListAPIView):
 class SafeIncomingTransferListView(SafeTransferListView):
     @swagger_auto_schema(
         responses={
-            200: serializers.TransferResponseSerializer(many=True),
+            200: serializers.TransferWithTokenInfoResponseSerializer(many=True),
             422: "Safe address checksum not valid",
         }
     )
@@ -853,14 +903,17 @@ class SafeIncomingTransferListView(SafeTransferListView):
         return super().get(*args, **kwargs)
 
     def get_transfers(self, address: str):
-        tokens_queryset = super().filter_queryset(
-            InternalTx.objects.token_incoming_txs_for_address(address)
+        erc20_queryset = self.filter_queryset(
+            ERC20Transfer.objects.incoming(address).token_txs()
         )
-        ether_queryset = super().filter_queryset(
+        erc721_queryset = self.filter_queryset(
+            ERC721Transfer.objects.incoming(address).token_txs()
+        )
+        ether_queryset = self.filter_queryset(
             InternalTx.objects.ether_incoming_txs_for_address(address)
         )
         return InternalTx.objects.union_ether_and_token_txs(
-            tokens_queryset, ether_queryset
+            erc20_queryset, erc721_queryset, ether_queryset
         )
 
 

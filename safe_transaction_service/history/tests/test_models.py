@@ -1,19 +1,24 @@
 import logging
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.test import TestCase
+from django.utils import timezone
 
 from eth_account import Account
 from web3 import Web3
 
 from gnosis.safe.safe_signature import SafeSignatureType
 
+from safe_transaction_service.contracts.models import ContractQuerySet
 from safe_transaction_service.contracts.tests.factories import ContractFactory
 
 from ..models import (
-    EthereumEvent,
+    ERC20Transfer,
+    ERC721Transfer,
+    EthereumBlock,
     EthereumTxCallType,
     InternalTx,
     InternalTxDecoded,
@@ -24,8 +29,9 @@ from ..models import (
     SafeStatus,
 )
 from .factories import (
+    ERC20TransferFactory,
+    ERC721TransferFactory,
     EthereumBlockFactory,
-    EthereumEventFactory,
     EthereumTxFactory,
     InternalTxDecodedFactory,
     InternalTxFactory,
@@ -126,6 +132,31 @@ class TestModelMixins(TestCase):
 
 
 class TestMultisigTransaction(TestCase):
+    def test_data_should_be_decoded(self):
+        try:
+            ContractQuerySet.cache_trusted_addresses_for_delegate_call.clear()
+            multisig_transaction = MultisigTransactionFactory(
+                signatures=None, operation=0
+            )
+            self.assertTrue(multisig_transaction.data_should_be_decoded())
+
+            multisig_transaction = MultisigTransactionFactory(
+                signatures=None, operation=1
+            )
+            self.assertFalse(multisig_transaction.data_should_be_decoded())
+
+            ContractFactory(
+                address=multisig_transaction.to, trusted_for_delegate_call=True
+            )
+            # Cache is used, so it will still be false
+            self.assertFalse(multisig_transaction.data_should_be_decoded())
+
+            # Empty cache
+            ContractQuerySet.cache_trusted_addresses_for_delegate_call.clear()
+            self.assertTrue(multisig_transaction.data_should_be_decoded())
+        finally:
+            ContractQuerySet.cache_trusted_addresses_for_delegate_call.clear()
+
     def test_multisig_transaction_owners(self):
         multisig_transaction = MultisigTransactionFactory(signatures=None)
         self.assertEqual(multisig_transaction.owners, [])
@@ -224,53 +255,63 @@ class TestEthereumTx(TestCase):
     pass
 
 
-class TestEthereumEvent(TestCase):
+class TestTokenTransfer(TestCase):
+    def test_transfer_to_erc721(self):
+        erc20_transfer = ERC20TransferFactory()
+        self.assertEqual(ERC721Transfer.objects.count(), 0)
+        erc20_transfer.to_erc721_transfer().save()
+        self.assertEqual(ERC721Transfer.objects.count(), 1)
+        erc721_transfer = ERC721Transfer.objects.get()
+        self.assertEqual(erc721_transfer.ethereum_tx_id, erc20_transfer.ethereum_tx_id)
+        self.assertEqual(erc721_transfer.address, erc20_transfer.address)
+        self.assertEqual(erc721_transfer.log_index, erc20_transfer.log_index)
+        self.assertEqual(erc721_transfer.to, erc20_transfer.to)
+        self.assertEqual(erc721_transfer.token_id, erc20_transfer.value)
+
+    def test_transfer_to_erc20(self):
+        erc721_transfer = ERC721TransferFactory()
+        self.assertEqual(ERC20Transfer.objects.count(), 0)
+        erc721_transfer.to_erc20_transfer().save()
+        self.assertEqual(ERC20Transfer.objects.count(), 1)
+        erc20_transfer = ERC721Transfer.objects.get()
+        self.assertEqual(erc721_transfer.ethereum_tx_id, erc20_transfer.ethereum_tx_id)
+        self.assertEqual(erc721_transfer.address, erc20_transfer.address)
+        self.assertEqual(erc721_transfer.log_index, erc20_transfer.log_index)
+        self.assertEqual(erc721_transfer.to, erc20_transfer.to)
+        self.assertEqual(erc721_transfer.token_id, erc20_transfer.value)
+
     def test_erc20_events(self):
         safe_address = Account.create().address
-        e1 = EthereumEventFactory(to=safe_address)
-        e2 = EthereumEventFactory(from_=safe_address)
-        EthereumEventFactory()  # This event should not appear
-        erc20_events_count = EthereumEvent.objects.erc20_events_count_by_address(
-            safe_address
-        )
-        self.assertEqual(erc20_events_count, 2)
-        self.assertEqual(
-            erc20_events_count,
-            EthereumEvent.objects.erc20_events(address=safe_address).count(),
-        )
+        e1 = ERC20TransferFactory(to=safe_address)
+        e2 = ERC20TransferFactory(_from=safe_address)
+        ERC20TransferFactory()  # This event should not appear
+        self.assertEqual(ERC20Transfer.objects.to_or_from(safe_address).count(), 2)
 
         self.assertSetEqual(
-            EthereumEvent.objects.erc20_tokens_used_by_address(safe_address),
+            ERC20Transfer.objects.tokens_used_by_address(safe_address),
             {e1.address, e2.address},
         )
 
     def test_erc721_events(self):
         safe_address = Account.create().address
-        e1 = EthereumEventFactory(to=safe_address, erc721=True)
-        e2 = EthereumEventFactory(from_=safe_address, erc721=True)
-        EthereumEventFactory(erc721=True)  # This event should not appear
-        erc721_events_count = EthereumEvent.objects.erc721_events_count_by_address(
-            safe_address
-        )
-        self.assertEqual(erc721_events_count, 2)
-        self.assertEqual(
-            erc721_events_count,
-            EthereumEvent.objects.erc721_events(address=safe_address).count(),
-        )
+        e1 = ERC721TransferFactory(to=safe_address)
+        e2 = ERC721TransferFactory(_from=safe_address)
+        ERC721TransferFactory()  # This event should not appear
+        self.assertEqual(ERC721Transfer.objects.to_or_from(safe_address).count(), 2)
 
         self.assertSetEqual(
-            EthereumEvent.objects.erc721_tokens_used_by_address(safe_address),
+            ERC721Transfer.objects.tokens_used_by_address(safe_address),
             {e1.address, e2.address},
         )
 
     def test_incoming_tokens(self):
         address = Account.create().address
         self.assertFalse(InternalTx.objects.token_incoming_txs_for_address(address))
-        EthereumEventFactory(to=address)
+        ERC20TransferFactory(to=address)
         self.assertEqual(
             InternalTx.objects.token_incoming_txs_for_address(address).count(), 1
         )
-        EthereumEventFactory(to=address, erc721=True)
+        ERC721TransferFactory(to=address)
         self.assertEqual(
             InternalTx.objects.token_incoming_txs_for_address(address).count(), 2
         )
@@ -280,35 +321,34 @@ class TestEthereumEvent(TestCase):
         incoming_token_1 = InternalTx.objects.token_incoming_txs_for_address(address)[
             1
         ]  # Erc20 token
-        self.assertIsNone(incoming_token_0.value)
-        self.assertIsNotNone(incoming_token_0.token_id)
-        self.assertIsNone(incoming_token_1.token_id)
-        self.assertIsNotNone(incoming_token_1.value)
+        self.assertIsNone(incoming_token_0["_value"])
+        self.assertIsNotNone(incoming_token_0["_token_id"])
+        self.assertIsNone(incoming_token_1["_token_id"])
+        self.assertIsNotNone(incoming_token_1["_value"])
 
     def test_erc721_owned_by(self):
         random_address = Account.create().address
         self.assertEqual(
-            EthereumEvent.objects.erc721_owned_by(address=random_address), []
+            ERC721Transfer.objects.erc721_owned_by(address=random_address), []
         )
-        ethereum_event = EthereumEventFactory(to=random_address, erc721=True)
-        EthereumEventFactory(
-            from_=random_address, erc721=True, value=6
+        erc721_transfer = ERC721TransferFactory(to=random_address)
+        ERC721TransferFactory(
+            _from=random_address, token_id=6
         )  # Not appearing as owner it's not the receiver
-        EthereumEventFactory(
-            to=Account.create().address, erc721=True
+        ERC721TransferFactory(
+            to=Account.create().address
         )  # Not appearing as it's not the owner
-        EthereumEventFactory(to=random_address)  # Not appearing as it's not an erc721
+        ERC20TransferFactory(to=random_address)  # Not appearing as it's not an erc721
         self.assertEqual(
-            len(EthereumEvent.objects.erc721_owned_by(address=random_address)), 1
+            len(ERC721Transfer.objects.erc721_owned_by(address=random_address)), 1
         )
-        EthereumEventFactory(
-            from_=random_address,
-            erc721=True,
-            address=ethereum_event.address,
-            value=ethereum_event.arguments["tokenId"],
+        ERC721TransferFactory(
+            _from=random_address,
+            address=erc721_transfer.address,
+            token_id=erc721_transfer.token_id,
         )  # Send the token out
         self.assertEqual(
-            len(EthereumEvent.objects.erc721_owned_by(address=random_address)), 0
+            len(ERC721Transfer.objects.erc721_owned_by(address=random_address)), 0
         )
 
 
@@ -327,18 +367,18 @@ class TestInternalTx(TestCase):
         self.assertEqual(txs.count(), 2)
 
         token_value = 10
-        ethereum_event = EthereumEventFactory(to=ethereum_address, value=token_value)
-        EthereumEventFactory(value=token_value)  # Create tx with a random address too
+        ERC20TransferFactory(to=ethereum_address, value=token_value)
+        ERC20TransferFactory(value=token_value)  # Create tx with a random address too
         txs = InternalTx.objects.ether_and_token_txs(ethereum_address)
         self.assertEqual(txs.count(), 3)
-        EthereumEventFactory(from_=ethereum_address, value=token_value)
+        ERC20TransferFactory(_from=ethereum_address, value=token_value)
         self.assertEqual(txs.count(), 4)
 
         for i, tx in enumerate(txs):
             if tx["token_address"]:
-                self.assertEqual(tx["value"], token_value)
+                self.assertEqual(tx["_value"], token_value)
             else:
-                self.assertEqual(tx["value"], ether_value)
+                self.assertEqual(tx["_value"], ether_value)
         self.assertEqual(i, 3)
 
         self.assertEqual(InternalTx.objects.ether_txs().count(), 3)
@@ -356,21 +396,26 @@ class TestInternalTx(TestCase):
         self.assertEqual(incoming_txs.count(), 1)
 
         token_value = 10
-        ethereum_event = EthereumEventFactory(to=ethereum_address, value=token_value)
-        EthereumEventFactory(value=token_value)  # Create tx with a random address too
+        ERC20TransferFactory(to=ethereum_address, value=token_value)
+        ERC20TransferFactory(value=token_value)  # Create tx with a random address too
         incoming_txs = InternalTx.objects.ether_and_token_incoming_txs(ethereum_address)
         self.assertEqual(incoming_txs.count(), 2)
 
-        # Make internal_tx more recent than ethereum_event
+        # Make internal_tx more recent than ERC20Transfer
+        block = EthereumBlockFactory()
+        internal_tx.block_number = block.number
+        internal_tx.timestamp = block.timestamp
+        internal_tx.save(update_fields=["block_number", "timestamp"])
+
         internal_tx.ethereum_tx.block = (
-            EthereumBlockFactory()
-        )  # As factory has a sequence, it will always be the last
-        internal_tx.ethereum_tx.save()
+            block  # As factory has a sequence, it will always be the last
+        )
+        internal_tx.ethereum_tx.save(update_fields=["block"])
 
         incoming_tx = InternalTx.objects.ether_and_token_incoming_txs(
             ethereum_address
         ).first()
-        self.assertEqual(incoming_tx["value"], ether_value)
+        self.assertEqual(incoming_tx["_value"], ether_value)
         self.assertIsNone(incoming_tx["token_address"])
 
     def test_internal_tx_can_be_decoded(self):
@@ -596,6 +641,19 @@ class TestSafeStatus(TestCase):
         SafeStatusFactory(address=address_2, nonce=2, owners=[new_owner])
         self.assertEqual(SafeStatus.objects.addresses_for_owner(owner_address), set())
 
+    def test_safe_status_previous(self):
+        safe_status_5 = SafeStatusFactory(nonce=5)
+        safe_status_7 = SafeStatusFactory(nonce=7)
+        self.assertIsNone(safe_status_5.previous())
+        self.assertIsNone(safe_status_7.previous())  # Not the same address
+        safe_status_5.address = safe_status_7.address
+        safe_status_5.save()
+        self.assertEqual(safe_status_7.previous(), safe_status_5)
+
+        safe_status_2 = SafeStatusFactory(nonce=2, address=safe_status_5.address)
+        self.assertIsNone(safe_status_2.previous())
+        self.assertEqual(safe_status_5.previous(), safe_status_2)
+
 
 class TestSafeContract(TestCase):
     def test_get_delegates_for_safe(self):
@@ -749,6 +807,36 @@ class TestEthereumBlock(TestCase):
         ethereum_block.set_not_confirmed()
         ethereum_block.refresh_from_db()
         self.assertFalse(ethereum_block.confirmed)
+
+    def test_oldest_than(self):
+        now = timezone.now()
+        one_hour_ago = now - timedelta(hours=1)
+        one_day_ago = now - timedelta(days=1)
+        one_week_ago = now - timedelta(weeks=1)
+
+        ethereum_block_0 = EthereumBlockFactory(timestamp=one_week_ago)
+        ethereum_block_1 = EthereumBlockFactory(timestamp=one_day_ago)
+        ethereum_block_2 = EthereumBlockFactory(timestamp=one_hour_ago)
+        ethereum_block_3 = EthereumBlockFactory(timestamp=now)
+
+        self.assertEqual(EthereumBlock.objects.oldest_than(0).first(), ethereum_block_3)
+        self.assertEqual(EthereumBlock.objects.oldest_than(2).first(), ethereum_block_2)
+        self.assertEqual(
+            EthereumBlock.objects.oldest_than(60 * 60 + 1).first(), ethereum_block_1
+        )
+        self.assertEqual(
+            EthereumBlock.objects.oldest_than(60 * 60 + 5).first(), ethereum_block_1
+        )
+        self.assertEqual(
+            EthereumBlock.objects.oldest_than(60 * 60 + 5).first(), ethereum_block_1
+        )
+        self.assertEqual(
+            EthereumBlock.objects.oldest_than(60 * 60 * 24 + 1).first(),
+            ethereum_block_0,
+        )
+        self.assertIsNone(
+            EthereumBlock.objects.oldest_than(60 * 60 * 24 * 7 + 1).first(), None
+        )
 
 
 class TestMultisigTransactions(TestCase):

@@ -6,7 +6,7 @@ from django.test import TestCase
 from gnosis.eth.tests.ethereum_test_case import EthereumTestCaseMixin
 
 from ..indexers import Erc20EventsIndexer, Erc20EventsIndexerProvider
-from ..models import EthereumEvent, EthereumTx
+from ..models import ERC20Transfer, EthereumTx
 from .factories import SafeContractFactory
 
 
@@ -31,7 +31,7 @@ class TestErc20EventsIndexer(EthereumTestCaseMixin, TestCase):
         self.assertEqual(safe_contract.erc20_block_number, 0)
         self.assertFalse(EthereumTx.objects.filter(tx_hash=tx_hash).exists())
         self.assertFalse(
-            EthereumEvent.objects.erc20_tokens_used_by_address(safe_contract.address)
+            ERC20Transfer.objects.tokens_used_by_address(safe_contract.address)
         )
 
         self.assertEqual(erc20_events_indexer.start(), 1)
@@ -44,16 +44,11 @@ class TestErc20EventsIndexer(EthereumTestCaseMixin, TestCase):
         )
         self.assertTrue(EthereumTx.objects.filter(tx_hash=tx_hash).exists())
         self.assertTrue(
-            EthereumEvent.objects.erc20_tokens_used_by_address(safe_contract.address)
+            ERC20Transfer.objects.tokens_used_by_address(safe_contract.address)
         )
 
-        erc20_events_count = EthereumEvent.objects.erc20_events_count_by_address(
-            safe_contract.address
-        )
-        self.assertEqual(erc20_events_count, 1)
         self.assertEqual(
-            erc20_events_count,
-            EthereumEvent.objects.erc20_events(address=safe_contract.address).count(),
+            ERC20Transfer.objects.to_or_from(safe_contract.address).count(), 1
         )
 
         # Test _process_decoded_element
@@ -81,8 +76,22 @@ class TestErc20EventsIndexer(EthereumTestCaseMixin, TestCase):
             event["args"]["tokenId"] = event["args"].pop("value")
             original_event = copy.deepcopy(event)
             event["args"]["unknown"] = event["args"].pop("tokenId")
-            event["args"]["unknown"] = original_event["args"]["tokenId"]
 
+            self.assertEqual(
+                erc20_events_indexer._process_decoded_element(event), original_event
+            )
+
+        event = self.ethereum_client.erc20.get_total_transfer_history(
+            from_block=block_number, to_block=block_number
+        )[0]
+        with mock.patch.object(
+            Erc20EventsIndexer, "_is_erc20", autospec=True, return_value=True
+        ):
+            # Convert event to erc721
+            original_event = copy.deepcopy(event)
+            event["args"]["tokenId"] = event["args"].pop("value")
+
+            # ERC721 event will be converted to ERC20
             self.assertEqual(
                 erc20_events_indexer._process_decoded_element(event), original_event
             )
