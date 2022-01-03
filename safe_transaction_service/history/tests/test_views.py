@@ -333,8 +333,7 @@ class TestViews(SafeTestCaseMixin, APITestCase):
             + "?transaction_hash=0x2345"
         )
         response = self.client.get(url, format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         url = (
             reverse("v1:history:module-transactions", args=(safe_address,))
@@ -1309,13 +1308,13 @@ class TestViews(SafeTestCaseMixin, APITestCase):
         PriceService, "get_token_eth_value", return_value=0.4, autospec=True
     )
     @mock.patch.object(
-        PriceService, "get_eth_usd_price", return_value=123.4, autospec=True
+        PriceService, "get_native_coin_usd_price", return_value=123.4, autospec=True
     )
     @mock.patch.object(timezone, "now", return_value=timezone.now())
     def test_safe_balances_usd_view(
         self,
         timezone_now_mock: MagicMock,
-        get_eth_usd_price_mock: MagicMock,
+        get_native_coin_usd_price_mock: MagicMock,
         get_token_eth_value_mock: MagicMock,
         get_token_info_mock: MagicMock,
     ):
@@ -1360,7 +1359,6 @@ class TestViews(SafeTestCaseMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         token_dict = asdict(erc20_info)
         del token_dict["address"]
-        self.maxDiff = None
         self.assertCountEqual(
             response.data,
             [
@@ -2228,8 +2226,7 @@ class TestViews(SafeTestCaseMixin, APITestCase):
             + "?transaction_hash=0x2345"
         )
         response = self.client.get(url, format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         # Add from tx
         internal_tx_2 = InternalTxFactory(_from=safe_address, value=value)

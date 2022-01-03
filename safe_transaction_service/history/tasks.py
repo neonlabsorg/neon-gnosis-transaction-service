@@ -9,7 +9,7 @@ from celery.utils.log import get_task_logger
 from eth_typing import ChecksumAddress
 from redis.exceptions import LockError
 
-from safe_transaction_service.utils.utils import close_gevent_db_connection
+from safe_transaction_service.utils.utils import close_gevent_db_connection_decorator
 
 from ..utils.tasks import LOCK_TIMEOUT, SOFT_TIMEOUT, only_one_running_task
 from .indexers import (
@@ -58,6 +58,7 @@ def index_erc20_events_task(self) -> Optional[int]:
 @app.shared_task(
     bind=True,
 )
+@close_gevent_db_connection_decorator
 def index_erc20_events_out_of_sync_task(
     self,
     block_process_limit: Optional[int] = None,
@@ -360,53 +361,57 @@ def get_webhook_http_session(webhook_url: str) -> requests.Session:
 @app.shared_task(
     autoretry_for=(IOError,), default_retry_delay=15, retry_kwargs={"max_retries": 3}
 )
+@close_gevent_db_connection_decorator
 def send_webhook_task(address: Optional[str], payload: Dict[str, Any]) -> int:
     if not (address and payload):
         return 0
 
-    try:
-        webhooks = WebHook.objects.matching_for_address(address)
-        if not webhooks:
-            logger.debug("There is no webhook configured for address=%s", address)
-            return 0
+    webhooks = WebHook.objects.matching_for_address(address)
+    if not webhooks:
+        logger.debug("There is no webhook configured for address=%s", address)
+        return 0
 
-        sent_requests = 0
-        webhook_type = WebHookType[payload["type"]]
-        for webhook in webhooks:
-            if not webhook.is_valid_for_webhook_type(webhook_type):
-                continue
+    sent_requests = 0
+    webhook_type = WebHookType[payload["type"]]
+    for webhook in webhooks:
+        if not webhook.is_valid_for_webhook_type(webhook_type):
+            logger.debug(
+                "There is no webhook configured for webhook_type=%s",
+                webhook_type.name,
+            )
+            continue
 
-            full_url = webhook.url
-            parsed_url = urlparse(full_url)
-            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"  # Remove url path for logging
-            if webhook.address:
-                logger.info(
-                    "Sending webhook for address=%s base-url=%s and payload=%s",
-                    address,
-                    base_url,
-                    payload,
-                )
-            else:  # Generic WebHook
-                logger.info(
-                    "Sending webhook for base-url=%s and payload=%s", base_url, payload
-                )
+        full_url = webhook.url
+        parsed_url = urlparse(full_url)
+        base_url = (
+            f"{parsed_url.scheme}://{parsed_url.netloc}"  # Remove url path for logging
+        )
+        if webhook.address:
+            logger.info(
+                "Sending webhook for address=%s base-url=%s and payload=%s",
+                address,
+                base_url,
+                payload,
+            )
+        else:  # Generic WebHook
+            logger.info(
+                "Sending webhook for base-url=%s and payload=%s", base_url, payload
+            )
 
-            r = get_webhook_http_session(full_url).post(full_url, json=payload)
-            if r.ok:
-                logger.info(
-                    "Webhook for base-url=%s and payload=%s was sent successfully",
-                    base_url,
-                    payload,
-                )
-            else:
-                logger.warning(
-                    "Webhook failed with status-code=%d posting to url=%s with content=%s",
-                    r.status_code,
-                    full_url,
-                    r.content,
-                )
+        r = get_webhook_http_session(full_url).post(full_url, json=payload)
+        if r.ok:
+            logger.info(
+                "Webhook for base-url=%s and payload=%s was sent successfully",
+                base_url,
+                payload,
+            )
+        else:
+            logger.warning(
+                "Webhook failed with status-code=%d posting to url=%s with content=%s",
+                r.status_code,
+                full_url,
+                r.content,
+            )
 
-            sent_requests += 1
-        return sent_requests
-    finally:
-        close_gevent_db_connection()
+        sent_requests += 1
+    return sent_requests

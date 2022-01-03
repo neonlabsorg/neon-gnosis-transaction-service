@@ -92,3 +92,6 @@ class CoingeckoClient:
 
     def get_movr_usd_price(self) -> float:
         return self.get_price("moonriver")
+
+    def get_gather_usd_price(self) -> float:
+        return self.get_price("gather")

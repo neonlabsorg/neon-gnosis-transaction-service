@@ -50,10 +50,11 @@ DATABASES = {
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
 DATABASES["default"]["ENGINE"] = "django_db_geventpool.backends.postgresql_psycopg2"
 DATABASES["default"]["CONN_MAX_AGE"] = 0
+DB_MAX_CONNS = env.int("DB_MAX_CONNS", default=50)
 DATABASES["default"]["OPTIONS"] = {
     # https://github.com/jneight/django-db-geventpool#settings
-    "MAX_CONNS": 4,
-    "REUSE_CONNS": 4,
+    "MAX_CONNS": DB_MAX_CONNS,
+    "REUSE_CONNS": env.int("DB_REUSE_CONNS", default=DB_MAX_CONNS),
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -204,8 +205,13 @@ MANAGERS = ADMINS
 INSTALLED_APPS += [
     "django_celery_beat",
 ]
+
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="django://")
+# https://docs.celeryproject.org/en/stable/userguide/optimizing.html#broker-connection-pools
+CELERY_BROKER_POOL_LIMIT = env(
+    "CELERY_BROKER_POOL_LIMIT", default=env("CELERYD_CONCURRENCY", default=500)
+)
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-result_backend
 if CELERY_BROKER_URL == "django://":
     CELERY_RESULT_BACKEND = "redis://"
@@ -299,6 +305,9 @@ LOGGING = {
         "": {
             "handlers": ["console"],
             "level": "INFO",
+        },
+        "django.geventpool": {
+            "level": "DEBUG" if DEBUG else "WARNING",
         },
         "LoggingMiddleware": {
             "handlers": ["console_short"],

@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -9,6 +9,7 @@ RUN set -ex \
 	&& buildDeps=" \
 		build-essential \
 		libssl-dev \
+        libpq-dev \
 		" \
     && apt-get update \
     && apt-get install -y --no-install-recommends $buildDeps tmux postgresql-client \

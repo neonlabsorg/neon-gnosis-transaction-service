@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from unittest import mock
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -19,6 +20,7 @@ from ..models import (
     ERC20Transfer,
     ERC721Transfer,
     EthereumBlock,
+    EthereumBlockManager,
     EthereumTxCallType,
     InternalTx,
     InternalTxDecoded,
@@ -27,6 +29,7 @@ from ..models import (
     SafeContractDelegate,
     SafeMasterCopy,
     SafeStatus,
+    WebHook,
 )
 from .factories import (
     ERC20TransferFactory,
@@ -41,7 +44,9 @@ from .factories import (
     SafeContractFactory,
     SafeMasterCopyFactory,
     SafeStatusFactory,
+    WebHookFactory,
 )
+from .mocks.mocks_internal_tx_indexer import block_result
 
 logger = logging.getLogger(__name__)
 
@@ -349,6 +354,13 @@ class TestTokenTransfer(TestCase):
         )  # Send the token out
         self.assertEqual(
             len(ERC721Transfer.objects.erc721_owned_by(address=random_address)), 0
+        )
+
+        # Send the token to oneself. Should only appear once
+        ERC721TransferFactory(to=random_address, token_id=6)
+        ERC721TransferFactory(_from=random_address, to=random_address, token_id=6)
+        self.assertEqual(
+            len(ERC721Transfer.objects.erc721_owned_by(address=random_address)), 1
         )
 
 
@@ -794,6 +806,25 @@ class TestMultisigConfirmations(TestCase):
 
 
 class TestEthereumBlock(TestCase):
+    def test_get_or_create_from_block(self):
+        mock_block = block_result[0]
+        self.assertEqual(EthereumBlock.objects.count(), 0)
+        EthereumBlock.objects.get_or_create_from_block(mock_block)
+        self.assertEqual(EthereumBlock.objects.count(), 1)
+        with mock.patch.object(
+            EthereumBlockManager, "create_from_block"
+        ) as create_from_block_mock:
+            # Block already exists
+            EthereumBlock.objects.get_or_create_from_block(mock_block)
+            create_from_block_mock.assert_not_called()
+
+        mock_block_2 = dict(mock_block)
+        mock_block_2["hash"] = Web3.keccak(text="another-hash")
+        self.assertNotEqual(mock_block["hash"], mock_block_2["hash"])
+        block = EthereumBlock.objects.get_or_create_from_block(mock_block_2)
+        self.assertEqual(block.block_hash, mock_block_2["hash"].hex())
+        self.assertEqual(EthereumBlock.objects.count(), 1)
+
     def test_set_confirmed_not_confirmed(self):
         ethereum_block = EthereumBlockFactory(confirmed=False)
         ethereum_block.set_confirmed()
@@ -1053,4 +1084,29 @@ class TestMultisigTransactions(TestCase):
         self.assertEqual(
             MultisigTransaction.objects.last_valid_transaction(safe_address),
             multisig_transaction_2,
+        )
+
+
+class TestWebHook(TestCase):
+    def test_matching_for_address(self):
+        addresses = [Account.create().address for _ in range(3)]
+        webhook_0 = WebHookFactory(address=addresses[0])
+        webhook_1 = WebHookFactory(address=addresses[1])
+
+        self.assertCountEqual(
+            WebHook.objects.matching_for_address(addresses[0]), [webhook_0]
+        )
+        self.assertCountEqual(
+            WebHook.objects.matching_for_address(addresses[1]), [webhook_1]
+        )
+
+        webhook_2 = WebHookFactory(address=None)
+        self.assertCountEqual(
+            WebHook.objects.matching_for_address(addresses[0]), [webhook_0, webhook_2]
+        )
+        self.assertCountEqual(
+            WebHook.objects.matching_for_address(addresses[1]), [webhook_1, webhook_2]
+        )
+        self.assertCountEqual(
+            WebHook.objects.matching_for_address(addresses[2]), [webhook_2]
         )
