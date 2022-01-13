@@ -1,7 +1,7 @@
 ![Build Status](https://github.com/gnosis/safe-transaction-service/workflows/Python%20CI/badge.svg?branch=master)
 [![Coverage Status](https://coveralls.io/repos/github/gnosis/safe-transaction-service/badge.svg?branch=master)](https://coveralls.io/github/gnosis/safe-transaction-service?branch=master)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
-![Python 3.9](https://img.shields.io/badge/Python-3.9-blue.svg)
+![Python 3.10](https://img.shields.io/badge/Python-3.10-blue.svg)
 ![Django 3](https://img.shields.io/badge/Django-3-blue.svg)
 
 # Gnosis Transaction Service
@@ -45,16 +45,18 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ## Setup for production (event indexing)
 Since **version 3.0.0** transaction service can be configured to rely on **event indexing**
-when [SafeL2 version](https://github.com/gnosis/safe-contracts/blob/v1.3.0/contracts/GnosisSafeL2.sol) is used. Only
-contracts from v1.3.0 onwards with L2 events will be indexed.
+when [SafeL2 version](https://github.com/gnosis/safe-contracts/blob/v1.3.0/contracts/GnosisSafeL2.sol) is used. **Only
+contracts from v1.3.0 onwards with L2 events will be indexed.**
 
 An example environment file can be used for the L2 setup:
 ```bash
 cp .env.l2.sample .env
 ```
 
-Edit `.env` file to add `ETHEREUM_NODE_URL` and remember to modify `DJANGO_SECRET_KEY` to **use a strong key**.
-The rest of the configuration does not need to be modified. Then:
+Edit `.env` file to add `ETHEREUM_NODE_URL` (on the example a `Polygon` public node is used)
+and remember to modify `DJANGO_SECRET_KEY` to **use a strong key**. The rest of the
+configuration does not need to be modified. Then:
+
 ```bash
 docker-compose build --force-rm
 docker-compose up
@@ -138,6 +140,18 @@ A user must be created to get access:
 ```bash
 docker exec -it safe-transaction-service_web_1 python manage.py createsuperuser
 ```
+
+## Safe Contract ABIs and addresses
+- [v1.3.0](https://github.com/gnosis/safe-deployments/blob/main/src/assets/v1.3.0/gnosis_safe.json)
+- [v1.3.0 L2](https://github.com/gnosis/safe-deployments/blob/main/src/assets/v1.3.0/gnosis_safe_l2.json)
+- [Other related contracts and previous Safe versions](https://github.com/gnosis/safe-deployments/blob/main/src/assets)
+
+
+## Troubleshooting
+
+### Issues installing grpc on a Mac M1
+
+If you face issues installing the `grpc` dependency locally (required by this project) on a M1 chip, set `GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1` and `GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1` and then try to install the dependency again.
 
 ## Contributors
 [See contributors](https://github.com/gnosis/safe-transaction-service/graphs/contributors)

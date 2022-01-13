@@ -13,31 +13,33 @@ logger = logging.getLogger(__name__)
 
 
 class CoingeckoClient:
-    base_url = 'https://api.coingecko.com/'
+    base_url = "https://api.coingecko.com/"
 
     def __init__(self, network: Optional[EthereumNetwork] = None):
         self.http_session = requests.Session()
         if network == EthereumNetwork.BINANCE:
-            self.asset_platform = 'binance-smart-chain'
+            self.asset_platform = "binance-smart-chain"
         elif network == EthereumNetwork.MATIC:
-            self.asset_platform = 'polygon-pos'
+            self.asset_platform = "polygon-pos"
         elif network == EthereumNetwork.MOON_MOONRIVER:
-            self.asset_platform = 'moonriver'
+            self.asset_platform = "moonriver"
         elif network == EthereumNetwork.MOON_MOONBASE:
-            self.asset_platform = 'moonriver'
+            self.asset_platform = "moonriver"
         elif network == EthereumNetwork.XDAI:
-            self.asset_platform = 'xdai'
+            self.asset_platform = "xdai"
         else:
-            self.asset_platform = 'ethereum'
+            self.asset_platform = "ethereum"
 
     @staticmethod
     def supports_network(network: EthereumNetwork):
-        return network in (EthereumNetwork.MAINNET,
-                           EthereumNetwork.BINANCE,
-                           EthereumNetwork.MATIC,
-                           EthereumNetwork.MOON_MOONRIVER,
-                           EthereumNetwork.MOON_MOONBASE,
-                           EthereumNetwork.XDAI)
+        return network in (
+            EthereumNetwork.MAINNET,
+            EthereumNetwork.BINANCE,
+            EthereumNetwork.MATIC,
+            EthereumNetwork.MOON_MOONRIVER,
+            EthereumNetwork.MOON_MOONBASE,
+            EthereumNetwork.XDAI,
+        )
 
     def _get_price(self, url: str, name: str):
         try:
@@ -46,12 +48,14 @@ class CoingeckoClient:
                 raise CannotGetPrice
             # Result is returned with lowercased `token_address`
             price = response.json().get(name)
-            if price and price.get('usd'):
-                return price['usd']
+            if price and price.get("usd"):
+                return price["usd"]
             else:
-                raise CannotGetPrice(f'Price from url={url} is {price}')
+                raise CannotGetPrice(f"Price from url={url} is {price}")
         except (ValueError, IOError) as e:
-            logger.warning('Problem getting usd value on coingecko for token-name=%s', name)
+            logger.warning(
+                "Problem getting usd value on coingecko for token-name=%s", name
+            )
             raise CannotGetPrice from e
 
     def get_price(self, name: str) -> float:
@@ -60,8 +64,9 @@ class CoingeckoClient:
         :return: usd price for token name, 0. if not found
         """
         name = name.lower()
-        url = urljoin(self.base_url,
-                      f'/api/v3/simple/price?ids={name}&vs_currencies=usd')
+        url = urljoin(
+            self.base_url, f"/api/v3/simple/price?ids={name}&vs_currencies=usd"
+        )
         return self._get_price(url, name)
 
     def get_token_price(self, token_address: ChecksumAddress) -> float:
@@ -72,18 +77,21 @@ class CoingeckoClient:
         token_address = token_address.lower()
         url = urljoin(
             self.base_url,
-            f'api/v3/simple/token_price/{self.asset_platform}?contract_addresses={token_address}&vs_currencies=usd'
+            f"api/v3/simple/token_price/{self.asset_platform}?contract_addresses={token_address}&vs_currencies=usd",
         )
         return self._get_price(url, token_address)
 
     def get_bnb_usd_price(self) -> float:
-        return self.get_price('binancecoin')
+        return self.get_price("binancecoin")
 
     def get_ewt_usd_price(self) -> float:
-        return self.get_price('energy-web-token')
+        return self.get_price("energy-web-token")
 
     def get_matic_usd_price(self) -> float:
-        return self.get_price('matic-network')
+        return self.get_price("matic-network")
 
     def get_movr_usd_price(self) -> float:
-        return self.get_price('moonriver')
+        return self.get_price("moonriver")
+
+    def get_gather_usd_price(self) -> float:
+        return self.get_price("gather")
