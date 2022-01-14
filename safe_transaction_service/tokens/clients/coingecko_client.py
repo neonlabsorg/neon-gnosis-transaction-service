@@ -21,6 +21,8 @@ class CoingeckoClient:
             self.asset_platform = "binance-smart-chain"
         elif network == EthereumNetwork.MATIC:
             self.asset_platform = "polygon-pos"
+        elif network == EthereumNetwork.MOON_MOONBEAM:
+            self.asset_platform = "moonbeam"
         elif network == EthereumNetwork.MOON_MOONRIVER:
             self.asset_platform = "moonriver"
         elif network == EthereumNetwork.MOON_MOONBASE:
@@ -92,6 +94,9 @@ class CoingeckoClient:
 
     def get_movr_usd_price(self) -> float:
         return self.get_price("moonriver")
+
+    def get_mbeam_usd_price(self) -> float:
+        return self.get_price("moonbeam")
 
     def get_gather_usd_price(self) -> float:
         return self.get_price("gather")
