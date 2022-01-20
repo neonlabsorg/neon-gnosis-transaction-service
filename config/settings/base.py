@@ -83,6 +83,7 @@ THIRD_PARTY_APPS = [
     "rest_framework",
     "drf_yasg",
     "django_s3_storage",
+    "rest_framework.authtoken",
 ]
 LOCAL_APPS = [
     "safe_transaction_service.contracts.apps.ContractsConfig",
@@ -103,7 +104,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.http.ConditionalGetMiddleware",
     "django.middleware.common.CommonMiddleware",
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -228,7 +229,10 @@ CELERY_IGNORE_RESULT = True
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-task_always_eager
 CELERY_ALWAYS_EAGER = False
 # https://docs.celeryproject.org/en/latest/userguide/configuration.html#task-default-priority
-CELERY_TASK_DEFAULT_PRIORITY = 5  # Higher = more priority
+# Higher = more priority on RabbitMQ, opposite on Redis ¯\_(ツ)_/¯
+CELERY_TASK_DEFAULT_PRIORITY = 3
+# https://docs.celeryproject.org/en/stable/userguide/configuration.html#task-queue-max-priority
+CELERY_TASK_QUEUE_MAX_PRIORITY = 10
 # https://docs.celeryproject.org/en/latest/userguide/configuration.html#broker-transport-options
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "queue_order_strategy": "priority",
@@ -296,7 +300,7 @@ LOGGING = {
         },
         "celery_console": {
             "level": "DEBUG",
-            "filters": ["ignore_succeeded_none"],
+            "filters": [] if DEBUG else ["ignore_succeeded_none"],
             "class": "logging.StreamHandler",
             "formatter": "celery_verbose",
         },
@@ -305,6 +309,9 @@ LOGGING = {
         "": {
             "handlers": ["console"],
             "level": "INFO",
+        },
+        "web3.providers": {
+            "level": "DEBUG" if DEBUG else "WARNING",
         },
         "django.geventpool": {
             "level": "DEBUG" if DEBUG else "WARNING",
@@ -378,7 +385,7 @@ ETH_EVENTS_UPDATED_BLOCK_BEHIND = env.int(
 # ------------------------------------------------------------------------------
 # Number of blocks from the current block number needed to consider a transaction valid/stable
 ETH_REORG_BLOCKS = env.int(
-    "ETH_REORG_BLOCKS", default=50 if ETH_L2_NETWORK else 10
+    "ETH_REORG_BLOCKS", default=100 if ETH_L2_NETWORK else 10
 )  # L2 Networks have more reorgs
 
 # Tokens
@@ -418,4 +425,10 @@ AWS_CONFIGURED = bool(
 )
 
 ETHERSCAN_API_KEY = env("ETHERSCAN_API_KEY", default=None)
-IPFS_GATEWAY = env("IPFS_GATEWAY", default="https://cloudflare-ipfs.com/")
+IPFS_GATEWAY = env("IPFS_GATEWAY", default="https://cloudflare-ipfs.com/ipfs/")
+
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": {
+        "api_key": {"type": "apiKey", "in": "header", "name": "Authorization"}
+    },
+}
