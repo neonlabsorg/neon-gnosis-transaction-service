@@ -202,36 +202,31 @@ class EthereumBlock(models.Model):
 
 
 class EthereumTxManager(models.Manager):
-    def create_from_tx_dict(
-        self,
-        tx: Dict[str, Any],
-        tx_receipt: Optional[Dict[str, Any]] = None,
-        ethereum_block: Optional[EthereumBlock] = None,
-    ) -> "EthereumTx":
-        data = HexBytes(tx.get("data") or tx.get("input"))
+    def create_from_tx_dict(self, tx: Dict[str, Any], tx_receipt: Optional[Dict[str, Any]] = None,
+                            ethereum_block: Optional[EthereumBlock] = None) -> 'EthereumTx':
+        data = HexBytes(tx.get('data') or tx.get('input'))
         # Supporting EIP1559
-        if "gasPrice" in tx:
-            gas_price = tx["gasPrice"]
+        if 'gasPrice' in tx:
+            gas_price = tx['gasPrice']
         else:
-            assert tx_receipt, f"Tx-receipt is required for EIP1559 tx {tx}"
-            gas_price = tx_receipt.get("effectiveGasPrice")
-            assert gas_price is not None, f"Gas price for tx {tx} cannot be None"
+            assert tx_receipt, f'Tx-receipt is required for EIP1559 tx {tx}'
+            gas_price = tx_receipt.get('effectiveGasPrice')
+            assert gas_price is not None, f'Gas price for tx {tx} cannot be None'
             gas_price = int(gas_price, 0)
         return super().create(
             block=ethereum_block,
-            tx_hash=HexBytes(tx["hash"]).hex(),
-            _from=tx["from"],
-            gas=tx["gas"],
+            tx_hash=HexBytes(tx['hash']).hex(),
+            _from=tx['from'],
+            gas=tx['gas'],
             gas_price=gas_price,
-            gas_used=tx_receipt and tx_receipt["gasUsed"],
-            logs=tx_receipt
-            and [clean_receipt_log(log) for log in tx_receipt.get("logs", list())],
-            status=tx_receipt and tx_receipt.get("status"),
-            transaction_index=tx_receipt and tx_receipt["transactionIndex"],
+            gas_used=tx_receipt and tx_receipt['gasUsed'],
+            logs=tx_receipt and [clean_receipt_log(log) for log in tx_receipt.get('logs', list())],
+            status=tx_receipt and tx_receipt.get('status'),
+            transaction_index=tx_receipt and tx_receipt['transactionIndex'],
             data=data if data else None,
-            nonce=tx["nonce"],
-            to=tx.get("to"),
-            value=tx["value"],
+            nonce=tx['nonce'],
+            to=tx.get('to'),
+            value=tx['value'],
         )
 
 
