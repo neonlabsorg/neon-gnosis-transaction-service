@@ -216,7 +216,7 @@ class PriceService:
             EthereumNetwork.MOON_MOONBASE,
         ):
             return self.get_movr_usd_price()
-        elif self.ethereum_network in (EthereumNetwork.MOON_MOONBEAM):
+        elif self.ethereum_network == EthereumNetwork.MOON_MOONBEAM:
             return self.get_mbeam_usd_price()
         elif self.ethereum_network == EthereumNetwork.BINANCE:
             return self.get_binance_usd_price()
