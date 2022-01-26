@@ -15,6 +15,8 @@ from ..models import (
     ModuleTransaction,
     MultisigConfirmation,
     MultisigTransaction,
+    SafeContract,
+    SafeMasterCopy,
     SafeStatus,
 )
 
@@ -82,6 +84,33 @@ class IndexService:
                 block, confirmed=confirmed
             )
 
+    def is_service_synced(self) -> bool:
+        """
+        :return: `True` if master copies and ERC20/721 are synced, `False` otherwise
+        """
+
+        # Use number of reorg blocks to consider as not synced
+        reference_block_number = (
+            self.ethereum_client.current_block_number - self.eth_reorg_blocks
+        )
+        synced = True
+        for safe_master_copy in SafeMasterCopy.objects.relevant().filter(
+            tx_block_number__lt=reference_block_number
+        ):
+            logger.error("Master Copy %s is out of sync", safe_master_copy.address)
+            synced = False
+
+        out_of_sync_contracts = SafeContract.objects.filter(
+            erc20_block_number__lt=reference_block_number
+        ).count()
+        if out_of_sync_contracts > 0:
+            logger.error(
+                "%d Safe Contracts have ERC20/721 out of sync", out_of_sync_contracts
+            )
+            synced = False
+
+        return synced
+
     def tx_create_or_update_from_tx_hash(self, tx_hash: str) -> "EthereumTx":
         try:
             ethereum_tx = EthereumTx.objects.get(tx_hash=tx_hash)
@@ -140,9 +169,9 @@ class IndexService:
                 raise TransactionNotFoundException(
                     f"Cannot find tx-receipt with tx-hash={HexBytes(tx_hash).hex()}"
                 )
-            elif tx_receipt.get("blockNumber") is None:
+            elif tx_receipt.get("blockHash") is None:
                 raise TransactionWithoutBlockException(
-                    f"Cannot find blockNumber for tx-receipt with "
+                    f"Cannot find blockHash for tx-receipt with "
                     f"tx-hash={HexBytes(tx_hash).hex()}"
                 )
             else:
@@ -165,8 +194,9 @@ class IndexService:
                     f"Cannot find blockHash for tx with "
                     f"tx-hash={HexBytes(tx_hash).hex()}"
                 )
-            block_hashes.add(tx["blockHash"].hex())
-            txs.append(tx)
+            else:
+                block_hashes.add(tx["blockHash"].hex())
+                txs.append(tx)
 
         blocks = self.ethereum_client.get_blocks(block_hashes)
         block_dict = {}

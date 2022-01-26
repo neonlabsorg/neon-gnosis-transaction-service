@@ -18,10 +18,11 @@ from typing import (
     Union,
 )
 
+from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, connection, models
+from django.db import IntegrityError, connection, models, transaction
 from django.db.models import Case, Count, Index, JSONField, Max, Q, QuerySet
 from django.db.models.expressions import F, OuterRef, RawSQL, Subquery, Value, When
 from django.db.models.functions import Coalesce
@@ -151,20 +152,7 @@ class BulkCreateSignalMixin:
 class EthereumBlockManager(models.Manager):
     def get_or_create_from_block(self, block: Dict[str, Any], confirmed: bool = False):
         try:
-            db_block = self.get(number=block["number"])
-            if db_block.block_hash != block["hash"].hex():
-                logger.warning(
-                    "Stored block=%d "
-                    "with hash=%s "
-                    "is not marching retrieved hash=%s",
-                    db_block.number,
-                    db_block.block_hash,
-                    block["hash"].hex(),
-                )
-                db_block.delete()
-                raise self.model.DoesNotExist
-            else:
-                return db_block
+            return self.get(block_hash=block["hash"])
         except self.model.DoesNotExist:
             return self.create_from_block(block, confirmed=confirmed)
 
@@ -177,20 +165,32 @@ class EthereumBlockManager(models.Manager):
         :return: EthereumBlock model
         """
         try:
-            return super().create(
-                number=block["number"],
-                gas_limit=block["gasLimit"],
-                gas_used=block["gasUsed"],
-                timestamp=datetime.datetime.fromtimestamp(
-                    block["timestamp"], datetime.timezone.utc
-                ),
-                block_hash=HexBytes(block["hash"]).hex(),
-                parent_hash=HexBytes(block["parentHash"]).hex(),
-                confirmed=confirmed,
-            )
+            with transaction.atomic():  # Needed for handling IntegrityError
+                return super().create(
+                    number=block["number"],
+                    gas_limit=block["gasLimit"],
+                    gas_used=block["gasUsed"],
+                    timestamp=datetime.datetime.fromtimestamp(
+                        block["timestamp"], datetime.timezone.utc
+                    ),
+                    block_hash=block["hash"].hex(),
+                    parent_hash=block["parentHash"].hex(),
+                    confirmed=confirmed,
+                )
         except IntegrityError:
-            # The block could be created in the meantime by other task while the block was fetched from blockchain
-            return self.get(number=block["number"])
+            db_block = self.get(number=block["number"])
+            if HexBytes(db_block.block_hash) == block["hash"]:  # pragma: no cover
+                # Block was inserted by another task
+                return db_block
+            else:
+                # There's a wrong block with the same number
+                db_block.confirmed = False  # Will be taken care of by the reorg task
+                db_block.save(update_fields=["confirmed"])
+                raise IntegrityError(
+                    f"Error inserting block with hash={block['hash'].hex()}, "
+                    f"there is a block with the same number={block['number']} inserted. "
+                    f"Marking block as not confirmed"
+                )
 
     @lru_cache(maxsize=10000)
     def get_timestamp_by_hash(self, block_hash: HexBytes) -> datetime.datetime:
@@ -251,36 +251,31 @@ class EthereumBlock(models.Model):
 
 
 class EthereumTxManager(models.Manager):
-    def create_from_tx_dict(
-        self,
-        tx: Dict[str, Any],
-        tx_receipt: Optional[Dict[str, Any]] = None,
-        ethereum_block: Optional[EthereumBlock] = None,
-    ) -> "EthereumTx":
-        data = HexBytes(tx.get("data") or tx.get("input"))
+    def create_from_tx_dict(self, tx: Dict[str, Any], tx_receipt: Optional[Dict[str, Any]] = None,
+                            ethereum_block: Optional[EthereumBlock] = None) -> 'EthereumTx':
+        data = HexBytes(tx.get('data') or tx.get('input'))
         # Supporting EIP1559
-        if "gasPrice" in tx:
-            gas_price = tx["gasPrice"]
+        if 'gasPrice' in tx:
+            gas_price = tx['gasPrice']
         else:
-            assert tx_receipt, f"Tx-receipt is required for EIP1559 tx {tx}"
-            gas_price = tx_receipt.get("effectiveGasPrice")
-            assert gas_price is not None, f"Gas price for tx {tx} cannot be None"
+            assert tx_receipt, f'Tx-receipt is required for EIP1559 tx {tx}'
+            gas_price = tx_receipt.get('effectiveGasPrice')
+            assert gas_price is not None, f'Gas price for tx {tx} cannot be None'
             gas_price = int(gas_price, 0)
         return super().create(
             block=ethereum_block,
-            tx_hash=HexBytes(tx["hash"]).hex(),
-            _from=tx["from"],
-            gas=tx["gas"],
+            tx_hash=HexBytes(tx['hash']).hex(),
+            _from=tx['from'],
+            gas=tx['gas'],
             gas_price=gas_price,
-            gas_used=tx_receipt and tx_receipt["gasUsed"],
-            logs=tx_receipt
-            and [clean_receipt_log(log) for log in tx_receipt.get("logs", list())],
-            status=tx_receipt and tx_receipt.get("status"),
-            transaction_index=tx_receipt and tx_receipt["transactionIndex"],
+            gas_used=tx_receipt and tx_receipt['gasUsed'],
+            logs=tx_receipt and [clean_receipt_log(log) for log in tx_receipt.get('logs', list())],
+            status=tx_receipt and tx_receipt.get('status'),
+            transaction_index=tx_receipt and tx_receipt['transactionIndex'],
             data=data if data else None,
-            nonce=tx["nonce"],
-            to=tx.get("to"),
-            value=tx["value"],
+            nonce=tx['nonce'],
+            to=tx.get('to'),
+            value=tx['value'],
         )
 
 
@@ -1386,6 +1381,16 @@ class SafeMasterCopyQueryset(models.QuerySet):
 
     def not_l2(self):
         return self.filter(l2=False)
+
+    def relevant(self):
+        """
+        :return: Relevant master copies for this network. If network is `L2`, only `L2` master copies are returned.
+            Otherwise, all master copies are returned
+        """
+        if settings.ETH_L2_NETWORK:
+            return self.l2()
+        else:
+            return self.all()
 
 
 class SafeMasterCopy(MonitoredAddress):

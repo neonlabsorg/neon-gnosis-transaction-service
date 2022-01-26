@@ -31,6 +31,36 @@ from .services import (
 logger = get_task_logger(__name__)
 
 
+@app.shared_task(bind=True, soft_time_limit=SOFT_TIMEOUT, time_limit=LOCK_TIMEOUT)
+def check_reorgs_task(self) -> Optional[int]:
+    """
+    :return: Number of oldest block with reorg detected. `None` if not reorg found
+    """
+    with contextlib.suppress(LockError):
+        with only_one_running_task(self):
+            logger.info("Start checking of reorgs")
+            reorg_service: ReorgService = ReorgServiceProvider()
+            first_reorg_block_number = reorg_service.check_reorgs()
+            if first_reorg_block_number:
+                logger.warning(
+                    "Reorg found for block-number=%d", first_reorg_block_number
+                )
+                # Stopping running tasks is not possible with gevent
+                reorg_service.recover_from_reorg(first_reorg_block_number)
+                return first_reorg_block_number
+
+
+@app.shared_task(bind=True, soft_time_limit=SOFT_TIMEOUT, time_limit=LOCK_TIMEOUT)
+def check_sync_status_task(self) -> bool:
+    """
+    Check indexing status of the service
+    """
+    if not (is_service_synced := IndexServiceProvider().is_service_synced()):
+        logger.error("Service is out of sync")
+
+    return is_service_synced
+
+
 @app.shared_task(
     bind=True,
     soft_time_limit=SOFT_TIMEOUT,
@@ -198,7 +228,7 @@ def process_decoded_internal_txs_task(self) -> Optional[int]:
 
 
 @app.shared_task(bind=True, soft_time_limit=SOFT_TIMEOUT, time_limit=LOCK_TIMEOUT)
-def reindex_last_hours(self, hours: int = 2) -> Optional[int]:
+def reindex_last_hours_task(self, hours: int = 2) -> Optional[int]:
     """
     Reindexes last hours for master copies to prevent indexing issues
     """
@@ -333,29 +363,18 @@ def process_decoded_internal_txs_for_safe_task(
                 return number_processed
 
 
-@app.shared_task(bind=True, soft_time_limit=SOFT_TIMEOUT, time_limit=LOCK_TIMEOUT)
-def check_reorgs_task(self) -> Optional[int]:
-    """
-    :return: Number of oldest block with reorg detected. `None` if not reorg found
-    """
-    with contextlib.suppress(LockError):
-        with only_one_running_task(self):
-            logger.info("Start checking of reorgs")
-            reorg_service: ReorgService = ReorgServiceProvider()
-            first_reorg_block_number = reorg_service.check_reorgs()
-            if first_reorg_block_number:
-                logger.warning(
-                    "Reorg found for block-number=%d", first_reorg_block_number
-                )
-                # Stopping running tasks is not possible with gevent
-                reorg_service.recover_from_reorg(first_reorg_block_number)
-                return first_reorg_block_number
-
-
 @cache
 def get_webhook_http_session(webhook_url: str) -> requests.Session:
     logger.debug("Getting http session for url=%s", webhook_url)
-    return requests.Session()
+    session = requests.Session()
+    adapter = requests.adapters.HTTPAdapter(
+        pool_connections=1,  # Doing all the connections to the same url
+        pool_maxsize=100,  # Number of concurrent connections
+        pool_block=False,
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 @app.shared_task(

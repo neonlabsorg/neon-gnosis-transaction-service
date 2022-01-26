@@ -17,14 +17,24 @@ class CoingeckoClient:
 
     def __init__(self, network: Optional[EthereumNetwork] = None):
         self.http_session = requests.Session()
-        if network == EthereumNetwork.BINANCE:
+        if network == EthereumNetwork.ARBITRUM:
+            self.asset_platform = "arbitrum-one"
+        elif network == EthereumNetwork.AURORA:
+            self.asset_platform = "aurora"
+        elif network == EthereumNetwork.AVALANCHE:
+            self.asset_platform = "avalanche"
+        elif network == EthereumNetwork.BINANCE:
             self.asset_platform = "binance-smart-chain"
         elif network == EthereumNetwork.MATIC:
             self.asset_platform = "polygon-pos"
+        elif network == EthereumNetwork.MOON_MOONBEAM:
+            self.asset_platform = "moonbeam"
         elif network == EthereumNetwork.MOON_MOONRIVER:
             self.asset_platform = "moonriver"
         elif network == EthereumNetwork.MOON_MOONBASE:
             self.asset_platform = "moonriver"
+        elif network == EthereumNetwork.OPTIMISTIC:
+            self.asset_platform = "optimistic-ethereum"
         elif network == EthereumNetwork.XDAI:
             self.asset_platform = "xdai"
         else:
@@ -33,11 +43,15 @@ class CoingeckoClient:
     @staticmethod
     def supports_network(network: EthereumNetwork):
         return network in (
-            EthereumNetwork.MAINNET,
+            EthereumNetwork.ARBITRUM,
+            EthereumNetwork.AURORA,
+            EthereumNetwork.AVALANCHE,
             EthereumNetwork.BINANCE,
+            EthereumNetwork.MAINNET,
             EthereumNetwork.MATIC,
             EthereumNetwork.MOON_MOONRIVER,
             EthereumNetwork.MOON_MOONBASE,
+            EthereumNetwork.OPTIMISTIC,
             EthereumNetwork.XDAI,
         )
 
@@ -81,6 +95,9 @@ class CoingeckoClient:
         )
         return self._get_price(url, token_address)
 
+    def get_avax_usd_price(self) -> float:
+        return self.get_price("avalanche-2")
+
     def get_bnb_usd_price(self) -> float:
         return self.get_price("binancecoin")
 
@@ -92,6 +109,9 @@ class CoingeckoClient:
 
     def get_movr_usd_price(self) -> float:
         return self.get_price("moonriver")
+
+    def get_mbeam_usd_price(self) -> float:
+        return self.get_price("moonbeam")
 
     def get_gather_usd_price(self) -> float:
         return self.get_price("gather")
