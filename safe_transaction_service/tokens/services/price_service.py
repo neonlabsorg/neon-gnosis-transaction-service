@@ -152,6 +152,9 @@ class PriceService:
         except CannotGetPrice:
             return self.coingecko_client.get_avax_usd_price()
 
+    def get_aurora_usd_price(self) -> float:
+        return self.coingecko_client.get_aoa_usd_price()
+
     def get_binance_usd_price(self) -> float:
         try:
             return self.binance_client.get_bnb_usd_price()
@@ -234,6 +237,12 @@ class PriceService:
             return self.coingecko_client.get_gather_usd_price()
         elif self.ethereum_network == EthereumNetwork.AVALANCHE:
             return self.get_avalanche_usd_price()
+        elif self.ethereum_network in (
+            EthereumNetwork.AURORA,
+            EthereumNetwork.AURORA_BETANET,
+            EthereumNetwork.ARBITRUM_TESTNET,
+        ):
+            return self.get_aurora_usd_price()
         else:
             try:
                 return self.kraken_client.get_eth_usd_price()
@@ -245,6 +254,7 @@ class PriceService:
     def get_token_eth_value(self, token_address: ChecksumAddress) -> float:
         """
         Uses multiple decentralized and centralized oracles to get token prices
+
         :param token_address:
         :return: Current ether value for a given `token_address`
         """
