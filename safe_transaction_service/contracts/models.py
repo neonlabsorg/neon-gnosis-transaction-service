@@ -13,6 +13,8 @@ from django.utils.translation import gettext_lazy as _
 
 from botocore.exceptions import ClientError
 from cachetools import TTLCache, cachedmethod
+from imagekit.models import ProcessedImageField
+from pilkit.processors import Resize
 from web3 import Web3
 from web3._utils.normalizers import normalize_abi
 from web3.contract import Contract
@@ -28,6 +30,12 @@ from gnosis.eth.django.models import EthereumAddressV2Field, Keccak256Field
 from gnosis.eth.ethereum_client import EthereumClientProvider, EthereumNetwork
 
 logger = getLogger(__name__)
+
+
+def get_contract_logo_path(instance: "Contract", filename):
+    # file will be uploaded to MEDIA_ROOT/<address>
+    _, extension = os.path.splitext(filename)
+    return f"contracts/logos/{instance.address}{extension}"  # extension includes '.'
 
 
 def get_file_storage():
@@ -77,13 +85,14 @@ class ContractAbi(models.Model):
         if isinstance(self.abi, str):
             self.abi = json.loads(self.abi)
         self.abi_hash = Web3.keccak(text=json.dumps(self.abi, separators=(",", ":")))
+        try:
+            # ABI already exists, overwrite
+            contract_abi = self.__class__.objects.get(abi_hash=self.abi_hash)
+            self.id = contract_abi.id
+            self.description = self.description or contract_abi.description
+        except self.__class__.DoesNotExist:
+            pass
         return super().save(*args, **kwargs)
-
-
-def get_contract_logo_path(instance: "Contract", filename):
-    # file will be uploaded to MEDIA_ROOT/<address>
-    _, extension = os.path.splitext(filename)
-    return f"contracts/logos/{instance.address}{extension}"  # extension includes '.'
 
 
 class ContractManager(models.Manager):
@@ -92,6 +101,7 @@ class ContractManager(models.Manager):
     ) -> Contract:
         """
         Create contract and try to fetch information from APIs
+
         :param address:
         :param network:
         :return: Contract instance populated with all the information found
@@ -102,8 +112,8 @@ class ContractManager(models.Manager):
 
     def fix_missing_logos(self) -> int:
         """
-        Syncs contracts with empty logos with files that exist on S3 and match the address. This usually happens
-        when logos
+        Syncs contracts with empty logos with files that exist on S3 and match the address
+
         :return: Number of synced logos
         """
         synced_logos = 0
@@ -145,16 +155,18 @@ class ContractQuerySet(models.QuerySet):
         return self.trusted_for_delegate_call().values_list("address", flat=True)
 
 
-class Contract(models.Model):  # Known addresses by the service
+class Contract(models.Model):  # Known contract addresses by the service
     objects = ContractManager.from_queryset(ContractQuerySet)()
     address = EthereumAddressV2Field(primary_key=True)
     name = models.CharField(max_length=200, blank=True, default="")
     display_name = models.CharField(max_length=200, blank=True, default="")
-    logo = models.ImageField(
+    logo = ProcessedImageField(
         blank=True,
         default="",
         upload_to=get_contract_logo_path,
         storage=get_file_storage,
+        format="PNG",
+        processors=[Resize(256, 256, upscale=False)],
     )
     contract_abi = models.ForeignKey(
         ContractAbi,
