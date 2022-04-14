@@ -17,6 +17,7 @@ from typing import (
     TypedDict,
     Union,
 )
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
@@ -221,7 +222,7 @@ class EthereumBlockQuerySet(models.QuerySet):
         queryset = self.filter(confirmed=False)
         if to_block_number is not None:
             queryset = queryset.filter(number__lte=to_block_number)
-        return queryset.order_by("number")
+        return queryset
 
 
 class EthereumBlock(models.Model):
@@ -251,31 +252,36 @@ class EthereumBlock(models.Model):
 
 
 class EthereumTxManager(models.Manager):
-    def create_from_tx_dict(self, tx: Dict[str, Any], tx_receipt: Optional[Dict[str, Any]] = None,
-                            ethereum_block: Optional[EthereumBlock] = None) -> 'EthereumTx':
-        data = HexBytes(tx.get('data') or tx.get('input'))
+    def create_from_tx_dict(
+        self,
+        tx: Dict[str, Any],
+        tx_receipt: Optional[Dict[str, Any]] = None,
+        ethereum_block: Optional[EthereumBlock] = None,
+    ) -> "EthereumTx":
+        data = HexBytes(tx.get("data") or tx.get("input"))
         # Supporting EIP1559
-        if 'gasPrice' in tx:
-            gas_price = tx['gasPrice']
+        if "gasPrice" in tx:
+            gas_price = tx["gasPrice"]
         else:
-            assert tx_receipt, f'Tx-receipt is required for EIP1559 tx {tx}'
-            gas_price = tx_receipt.get('effectiveGasPrice')
-            assert gas_price is not None, f'Gas price for tx {tx} cannot be None'
+            assert tx_receipt, f"Tx-receipt is required for EIP1559 tx {tx}"
+            gas_price = tx_receipt.get("effectiveGasPrice")
+            assert gas_price is not None, f"Gas price for tx {tx} cannot be None"
             gas_price = int(gas_price, 0)
         return super().create(
             block=ethereum_block,
-            tx_hash=HexBytes(tx['hash']).hex(),
-            _from=tx['from'],
-            gas=tx['gas'],
+            tx_hash=HexBytes(tx["hash"]).hex(),
+            _from=tx["from"],
+            gas=tx["gas"],
             gas_price=gas_price,
-            gas_used=tx_receipt and tx_receipt['gasUsed'],
-            logs=tx_receipt and [clean_receipt_log(log) for log in tx_receipt.get('logs', list())],
-            status=tx_receipt and tx_receipt.get('status'),
-            transaction_index=tx_receipt and tx_receipt['transactionIndex'],
+            gas_used=tx_receipt and tx_receipt["gasUsed"],
+            logs=tx_receipt
+            and [clean_receipt_log(log) for log in tx_receipt.get("logs", [])],
+            status=tx_receipt and tx_receipt.get("status"),
+            transaction_index=tx_receipt and tx_receipt["transactionIndex"],
             data=data if data else None,
-            nonce=tx['nonce'],
-            to=tx.get('to'),
-            value=tx['value'],
+            nonce=tx["nonce"],
+            to=tx.get("to"),
+            value=tx["value"],
         )
 
 
@@ -325,9 +331,7 @@ class EthereumTx(TimeStampedModel):
         if self.block is None:
             self.block = ethereum_block
             self.gas_used = tx_receipt["gasUsed"]
-            self.logs = [
-                clean_receipt_log(log) for log in tx_receipt.get("logs", list())
-            ]
+            self.logs = [clean_receipt_log(log) for log in tx_receipt.get("logs", [])]
             self.status = tx_receipt.get("status")
             self.transaction_index = tx_receipt["transactionIndex"]
             return self.save(
@@ -404,17 +408,25 @@ class TokenTransfer(models.Model):
                 f"Not supported EventData, topic {topic.hex()} does not match expected {expected_topic.hex()}"
             )
 
-        return {
-            "timestamp": EthereumBlock.objects.get_timestamp_by_hash(
+        try:
+            timestamp = EthereumBlock.objects.get_timestamp_by_hash(
                 event_data["blockHash"]
-            ),
-            "block_number": event_data["blockNumber"],
-            "ethereum_tx_id": event_data["transactionHash"],
-            "log_index": event_data["logIndex"],
-            "address": event_data["address"],
-            "_from": event_data["args"]["from"],
-            "to": event_data["args"]["to"],
-        }
+            )
+            return {
+                "timestamp": timestamp,
+                "block_number": event_data["blockNumber"],
+                "ethereum_tx_id": event_data["transactionHash"],
+                "log_index": event_data["logIndex"],
+                "address": event_data["address"],
+                "_from": event_data["args"]["from"],
+                "to": event_data["args"]["to"],
+            }
+        except EthereumBlock.DoesNotExist:
+            # Block is not found and should be present on DB. Reorg
+            EthereumTx.objects.get(
+                event_data["transactionHash"]
+            ).block.set_not_confirmed()
+            raise
 
     @classmethod
     def from_decoded_event(cls, event_data: EventData):
@@ -508,7 +520,8 @@ class ERC721TransferManager(TokenTransferManager):
                 continue
             if erc721_event.to == erc721_event._from:
                 continue  # Nice try ¯\_(ツ)_/¯
-            elif erc721_event.to == address:
+
+            if erc721_event.to == address:
                 list_to_append = tokens_in
             else:
                 list_to_append = tokens_out
@@ -1185,6 +1198,11 @@ class MultisigTransaction(TimeStampedModel):
         default=False, db_index=True
     )  # Txs proposed by a delegate or with one confirmation
 
+    class Meta:
+        permissions = [
+            ("create_trusted", "Can create trusted transactions"),
+        ]
+
     def __str__(self):
         return f"{self.safe} - {self.nonce} - {self.safe_tx_hash}"
 
@@ -1313,7 +1331,7 @@ class MultisigConfirmation(TimeStampedModel):
     )  # Use this while we don't have a `multisig_transaction`
     owner = EthereumAddressV2Field()
 
-    signature = HexField(null=True, default=None, max_length=2000)
+    signature = HexField(null=True, default=None, max_length=5000)
     signature_type = models.PositiveSmallIntegerField(
         choices=[(tag.value, tag.name) for tag in SafeSignatureType], db_index=True
     )
@@ -1521,17 +1539,18 @@ class SafeStatusQuerySet(models.QuerySet):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                    SELECT DISTINCT(address)
+                    SELECT address
                     FROM (
-                        SELECT address, owners,
-                                rank() OVER (PARTITION BY address ORDER BY nonce DESC, internal_tx_id DESC) AS pos
+                        SELECT DISTINCT ON(address) address, owners
                         FROM history_safestatus
                         WHERE address IN (
+                            -- Do a first filtering
                             SELECT address FROM history_safestatus
                             WHERE owners @> ARRAY[%s]::bytea[]
                         )
-                        ) AS ss
-                    WHERE pos = 1 AND owners @> ARRAY[%s]::bytea[];
+                        ORDER BY address, nonce DESC, internal_tx_id DESC
+                    ) AS sq
+                    WHERE owners @> ARRAY[%s]::bytea[];
                 """,
                 [HexBytes(owner_address), HexBytes(owner_address)],
             )
@@ -1629,10 +1648,32 @@ class WebHookQuerySet(models.QuerySet):
         return self.filter(Q(address=address) | Q(address=None))
 
 
+def _validate_webhook_url(url: str) -> None:
+    result = urlparse(url)
+    if not all(
+        (
+            result.scheme
+            in (
+                "http",
+                "https",
+            ),
+            result.netloc,
+        )
+    ):
+        raise ValidationError(f"{url} is not a valid url")
+
+
 class WebHook(models.Model):
     objects = WebHookQuerySet.as_manager()
     address = EthereumAddressV2Field(db_index=True, null=True, blank=True)
-    url = models.URLField()
+    url = models.CharField(max_length=255, validators=[_validate_webhook_url])
+    authorization = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Set HTTP Authorization header with the value",
+    )
     # Configurable webhook types to listen to
     new_confirmation = models.BooleanField(default=True)
     pending_outgoing_transaction = models.BooleanField(default=True)

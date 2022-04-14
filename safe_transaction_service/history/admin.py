@@ -83,7 +83,7 @@ class SafeContractDelegateInline(admin.TabularInline):
 
 # Admin models ------------------------------
 @admin.register(EthereumBlock)
-class EthereumBlockAdmin(BinarySearchAdmin):
+class EthereumBlockAdmin(admin.ModelAdmin):
     date_hierarchy = "timestamp"
     inlines = (EthereumTxInline,)
     list_display = (
@@ -95,7 +95,10 @@ class EthereumBlockAdmin(BinarySearchAdmin):
         "block_hash",
     )
     list_filter = ("confirmed",)
-    search_fields = ["number", "=block_hash"]
+    search_fields = [
+        "number",
+        "=block_hash",
+    ]
     ordering = ["-number"]
 
 
@@ -564,6 +567,7 @@ class WebHookAdmin(BinarySearchAdmin):
     list_display = (
         "pk",
         "url",
+        "authorization",
         "address",
         "pending_outgoing_transaction",
         "new_confirmation",

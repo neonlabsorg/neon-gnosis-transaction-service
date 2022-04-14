@@ -259,6 +259,15 @@ class SafeMultisigTransactionSerializer(SafeMultisigTxSerializerV1):
         safe_tx_hash = self.validated_data["contract_transaction_hash"]
         origin = self.validated_data["origin"]
         trusted = self.validated_data["trusted"]
+        if not trusted:
+            # Check user permission
+            if (
+                self.context
+                and (request := self.context.get("request"))
+                and (user := request.user)
+            ):
+                trusted = user.has_perm("history.create_trusted")
+
         multisig_transaction, created = MultisigTransaction.objects.get_or_create(
             safe_tx_hash=safe_tx_hash,
             defaults={
@@ -351,7 +360,8 @@ class DelegateSignatureCheckerMixin:
         safe_signatures = SafeSignature.parse_signature(signature, operation_hash)
         if not safe_signatures:
             raise ValidationError("Signature is not valid")
-        elif len(safe_signatures) > 1:
+
+        if len(safe_signatures) > 1:
             raise ValidationError(
                 "More than one signatures detected, just one is expected"
             )
@@ -560,6 +570,7 @@ class SafeMultisigTransactionResponseSerializer(SafeMultisigTxSerializerV1):
     data_decoded = serializers.SerializerMethodField()
     confirmations_required = serializers.IntegerField()
     confirmations = serializers.SerializerMethodField()
+    trusted = serializers.BooleanField()
     signatures = HexadecimalField(allow_null=True, required=False)
 
     def get_block_number(self, obj: MultisigTransaction) -> Optional[int]:
@@ -915,7 +926,8 @@ class SafeDelegateDeleteSerializer(serializers.Serializer):
         safe_signatures = SafeSignature.parse_signature(signature, operation_hash)
         if not safe_signatures:
             raise ValidationError("Signature is not valid")
-        elif len(safe_signatures) > 1:
+
+        if len(safe_signatures) > 1:
             raise ValidationError(
                 "More than one signatures detected, just one is expected"
             )

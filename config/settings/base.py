@@ -41,6 +41,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.2/ref/settings/#force-script-name
 FORCE_SCRIPT_NAME = env("FORCE_SCRIPT_NAME", default=None)
 
+# SSO
+SSO_ENABLED = False
+
 # DATABASES
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#databases
@@ -196,7 +199,7 @@ EMAIL_BACKEND = env(
 ADMIN_URL = "admin/"
 # https://docs.djangoproject.com/en/dev/ref/settings/#admins
 ADMINS = [
-    ("""Gnosis""", "dev@gnosis.pm"),
+    ("Gnosis Safe team", "safe@gnosis.io"),
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#managers
 MANAGERS = ADMINS
@@ -250,6 +253,11 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PARSER_CLASSES": (
         "djangorestframework_camel_case.parser.CamelCaseJSONParser",
+    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        # 'rest_framework.authentication.BasicAuthentication',
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
     "EXCEPTION_HANDLER": "safe_transaction_service.history.exceptions.custom_exception_handler",
@@ -410,6 +418,10 @@ if NOTIFICATIONS_FIREBASE_CREDENTIALS_PATH:
         )
     )
 
+# Percentage of Safes allowed to be out of sync without alerting. By default 10%
+ALERT_OUT_OF_SYNC_EVENTS_THRESHOLD = env.float(
+    "ALERT_OUT_OF_SYNC_EVENTS_THRESHOLD", default=0.1
+)
 
 # AWS S3 https://github.com/etianen/django-s3-storage
 # AWS_QUERYSTRING_AUTH = False  # Remove query parameter authentication from generated URLs
@@ -433,3 +445,8 @@ SWAGGER_SETTINGS = {
         "api_key": {"type": "apiKey", "in": "header", "name": "Authorization"}
     },
 }
+
+# Cache
+CACHE_OWNERS_VIEW_SECONDS = env.int(
+    "CACHE_OWNERS_VIEW_SECONDS", default=60 * 60
+)  # 1 hour
