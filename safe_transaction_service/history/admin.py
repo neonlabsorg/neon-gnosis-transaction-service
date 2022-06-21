@@ -25,6 +25,7 @@ from .models import (
     ProxyFactory,
     SafeContract,
     SafeContractDelegate,
+    SafeLastStatus,
     SafeMasterCopy,
     SafeStatus,
     WebHook,
@@ -154,7 +155,7 @@ class EthereumTxAdmin(BinarySearchAdmin):
         MultisigConfirmationInline,
     )
     list_display = ("block_id", "tx_hash", "nonce", "_from", "to")
-    list_filter = ("status",)
+    list_filter = ("status", "type")
     search_fields = ["=tx_hash", "=_from", "=to"]
     ordering = ["-block_id"]
     raw_id_fields = ("block",)
@@ -179,7 +180,7 @@ class InternalTxAdmin(BinarySearchAdmin):
     ordering = [
         "-block_number",
         "-ethereum_tx__transaction_index",
-        "-trace_address",
+        "-pk",
     ]
     raw_id_fields = ("ethereum_tx",)
     search_fields = [
@@ -225,7 +226,7 @@ class InternalTxDecodedAdmin(BinarySearchAdmin):
     ordering = [
         "-internal_tx__block_number",
         "-internal_tx__ethereum_tx__transaction_index",
-        "-internal_tx__trace_address",
+        "-internal_tx_id",
     ]
     raw_id_fields = ("internal_tx",)
     search_fields = [
@@ -501,8 +502,8 @@ class SafeStatusModulesListFilter(admin.SimpleListFilter):
             return queryset.exclude(**parameters)
 
 
-@admin.register(SafeStatus)
-class SafeStatusAdmin(BinarySearchAdmin):
+@admin.register(SafeLastStatus)
+class SafeLastStatusAdmin(BinarySearchAdmin):
     actions = ["remove_and_index"]
     fields = (
         "internal_tx",
@@ -562,6 +563,11 @@ class SafeStatusAdmin(BinarySearchAdmin):
         IndexServiceProvider().reprocess_addresses(safe_addresses)
 
 
+@admin.register(SafeStatus)
+class SafeStatusAdmin(SafeLastStatusAdmin):
+    pass
+
+
 @admin.register(WebHook)
 class WebHookAdmin(BinarySearchAdmin):
     list_display = (
@@ -569,18 +575,18 @@ class WebHookAdmin(BinarySearchAdmin):
         "url",
         "authorization",
         "address",
-        "pending_outgoing_transaction",
+        "pending_multisig_transaction",
         "new_confirmation",
-        "new_executed_outgoing_transaction",
+        "new_executed_multisig_transaction",
         "new_incoming_transaction",
         "new_safe",
         "new_module_transaction",
         "new_outgoing_transaction",
     )
     list_filter = (
-        "pending_outgoing_transaction",
+        "pending_multisig_transaction",
         "new_confirmation",
-        "new_executed_outgoing_transaction",
+        "new_executed_multisig_transaction",
         "new_incoming_transaction",
         "new_safe",
         "new_module_transaction",

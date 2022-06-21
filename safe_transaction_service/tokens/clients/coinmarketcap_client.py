@@ -5,7 +5,8 @@ from typing import Any, Dict, List
 from urllib.parse import urljoin
 
 import requests
-from eth_utils import to_checksum_address
+
+from gnosis.eth.utils import fast_to_checksum_address
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +90,10 @@ class CoinMarketCapClient:
                 token
                 and token["is_active"]
                 and token["platform"]
-                and token["platform"]["symbol"] == "ETH"
+                and token["platform"]["name"] == "Ethereum"
             ):
                 try:
-                    checksummed_address = to_checksum_address(
+                    checksummed_address = fast_to_checksum_address(
                         token["platform"]["token_address"]
                     )
                     tokens.append(
