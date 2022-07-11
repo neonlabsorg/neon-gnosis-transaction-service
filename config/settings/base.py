@@ -41,6 +41,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.2/ref/settings/#force-script-name
 FORCE_SCRIPT_NAME = env("FORCE_SCRIPT_NAME", default=None)
 
+# SSO
+SSO_ENABLED = False
+
 # DATABASES
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#databases
@@ -196,7 +199,7 @@ EMAIL_BACKEND = env(
 ADMIN_URL = "admin/"
 # https://docs.djangoproject.com/en/dev/ref/settings/#admins
 ADMINS = [
-    ("""Gnosis""", "dev@gnosis.pm"),
+    ("Gnosis Safe team", "safe@gnosis.io"),
 ]
 # https://docs.djangoproject.com/en/dev/ref/settings/#managers
 MANAGERS = ADMINS
@@ -210,14 +213,12 @@ INSTALLED_APPS += [
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="django://")
 # https://docs.celeryproject.org/en/stable/userguide/optimizing.html#broker-connection-pools
+# https://docs.celeryq.dev/en/latest/userguide/optimizing.html#broker-connection-pools
 CELERY_BROKER_POOL_LIMIT = env(
-    "CELERY_BROKER_POOL_LIMIT", default=env("CELERYD_CONCURRENCY", default=500)
+    "CELERY_BROKER_POOL_LIMIT", default=env("CELERYD_CONCURRENCY", default=1000)
 )
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-result_backend
-if CELERY_BROKER_URL == "django://":
-    CELERY_RESULT_BACKEND = "redis://"
-else:
-    CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://")
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-accept_content
 CELERY_ACCEPT_CONTENT = ["json"]
 # http://docs.celeryproject.org/en/latest/userguide/configuration.html#std:setting-task_serializer
@@ -230,13 +231,24 @@ CELERY_IGNORE_RESULT = True
 CELERY_ALWAYS_EAGER = False
 # https://docs.celeryproject.org/en/latest/userguide/configuration.html#task-default-priority
 # Higher = more priority on RabbitMQ, opposite on Redis ¯\_(ツ)_/¯
-CELERY_TASK_DEFAULT_PRIORITY = 3
+CELERY_TASK_DEFAULT_PRIORITY = 5
 # https://docs.celeryproject.org/en/stable/userguide/configuration.html#task-queue-max-priority
 CELERY_TASK_QUEUE_MAX_PRIORITY = 10
 # https://docs.celeryproject.org/en/latest/userguide/configuration.html#broker-transport-options
-CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "queue_order_strategy": "priority",
-}
+CELERY_BROKER_TRANSPORT_OPTIONS = {}
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_routes
+CELERY_ROUTES = (
+    [
+        (
+            "safe_transaction_service.history.tasks.send_webhook_task",
+            {"queue": "webhooks"},
+        ),
+        ("safe_transaction_service.history.tasks.*", {"queue": "indexing"}),
+        ("safe_transaction_service.contracts.tasks.*", {"queue": "contracts"}),
+        ("safe_transaction_service.notifications.tasks.*", {"queue": "notifications"}),
+        ("safe_transaction_service.tokens.tasks.*", {"queue": "tokens"}),
+    ],
+)
 
 
 # Django REST Framework
@@ -250,6 +262,11 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PARSER_CLASSES": (
         "djangorestframework_camel_case.parser.CamelCaseJSONParser",
+    ),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        # 'rest_framework.authentication.BasicAuthentication',
+        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.TokenAuthentication",
     ),
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
     "EXCEPTION_HANDLER": "safe_transaction_service.history.exceptions.custom_exception_handler",
@@ -365,6 +382,9 @@ ETH_INTERNAL_TXS_BLOCK_PROCESS_LIMIT = env.int(
     "ETH_INTERNAL_TXS_BLOCK_PROCESS_LIMIT", default=10000
 )
 ETH_INTERNAL_NO_FILTER = env.bool("ETH_INTERNAL_NO_FILTER", default=False)
+ETH_INTERNAL_TRACE_TXS_BATCH_SIZE = env.int(
+    "ETH_INTERNAL_TRACE_TXS_BATCH_SIZE", default=0
+)
 ETH_L2_NETWORK = env.bool(
     "ETH_L2_NETWORK", default=not ETHEREUM_TRACING_NODE_URL
 )  # Use L2 event indexing
@@ -410,6 +430,10 @@ if NOTIFICATIONS_FIREBASE_CREDENTIALS_PATH:
         )
     )
 
+# Percentage of Safes allowed to be out of sync without alerting. By default 10%
+ALERT_OUT_OF_SYNC_EVENTS_THRESHOLD = env.float(
+    "ALERT_OUT_OF_SYNC_EVENTS_THRESHOLD", default=0.1
+)
 
 # AWS S3 https://github.com/etianen/django-s3-storage
 # AWS_QUERYSTRING_AUTH = False  # Remove query parameter authentication from generated URLs
