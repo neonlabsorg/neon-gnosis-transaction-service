@@ -5,7 +5,8 @@ from typing import Any, Dict, List
 from urllib.parse import urljoin
 
 import requests
-from eth_utils import to_checksum_address
+
+from gnosis.eth.utils import fast_to_checksum_address
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class CoinMarketCapClient:
         with self.http_session.get(url, stream=True) as response:
             if not response.ok:
                 logger.warning("Image not found for url %s", url)
-                return
+                return None
             with open(os.path.join(taget_folder, local_filename), "wb") as f:
                 for chunk in response.iter_content(chunk_size=1024):
                     if chunk:
@@ -89,10 +90,10 @@ class CoinMarketCapClient:
                 token
                 and token["is_active"]
                 and token["platform"]
-                and token["platform"]["symbol"] == "ETH"
+                and token["platform"]["name"] == "Ethereum"
             ):
                 try:
-                    checksummed_address = to_checksum_address(
+                    checksummed_address = fast_to_checksum_address(
                         token["platform"]["token_address"]
                     )
                     tokens.append(

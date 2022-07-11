@@ -8,9 +8,9 @@ from rest_framework import response, status
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
-from web3 import Web3
 
 from gnosis.eth.constants import NULL_ADDRESS
+from gnosis.eth.utils import fast_is_checksum_address
 
 from . import filters, serializers
 from .models import Token
@@ -26,7 +26,7 @@ class TokenView(RetrieveAPIView):
     @method_decorator(cache_page(60 * 60))  # Cache 1 hour, this should never change
     def get(self, request, *args, **kwargs):
         address = self.kwargs["address"]
-        if not Web3.isChecksumAddress(address):
+        if not fast_is_checksum_address(address):
             return response.Response(
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 data={
@@ -69,7 +69,7 @@ class TokenPriceView(GenericAPIView):
     @method_decorator(cache_page(60 * 10))  # Cache 10 minutes
     def get(self, request, *args, **kwargs):
         address = self.kwargs["address"]
-        if not Web3.isChecksumAddress(address):
+        if not fast_is_checksum_address(address):
             return response.Response(
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 data={
@@ -89,9 +89,7 @@ class TokenPriceView(GenericAPIView):
         else:
             token = self.get_object()  # Raises 404 if not found
             fiat_price_with_timestamp = next(
-                PriceServiceProvider().get_cached_usd_values(
-                    [token.get_price_address()]
-                )
+                price_service.get_cached_usd_values([token.get_price_address()])
             )
             data = {
                 "fiat_code": fiat_price_with_timestamp.fiat_code.name,

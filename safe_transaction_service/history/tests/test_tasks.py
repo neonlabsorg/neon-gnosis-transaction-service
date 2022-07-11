@@ -10,11 +10,12 @@ from eth_account import Account
 
 from gnosis.eth import EthereumClient, EthereumNetwork
 
-from ..models import SafeContract, SafeStatus
+from ..models import SafeContract, SafeLastStatus, SafeStatus
 from ..services import IndexService
 from ..tasks import (
     check_reorgs_task,
     check_sync_status_task,
+    get_webhook_http_session,
     index_erc20_events_out_of_sync_task,
     index_erc20_events_task,
     index_internal_txs_task,
@@ -114,6 +115,14 @@ class TestTasks(TestCase):
         # for the WebHook without address set
         self.assertEqual(mock_post.call_count, 3)
 
+    def test_get_webhook_http_session(self):
+        session = get_webhook_http_session("http://random-url", None)
+        self.assertNotIn("Authorization", session.headers)
+
+        secret_token = "IDDQD"
+        session = get_webhook_http_session("http://random-url", secret_token)
+        self.assertEqual(session.headers["Authorization"], secret_token)
+
     def test_process_decoded_internal_txs_task(self):
         owner = Account.create().address
         safe_address = Account.create().address
@@ -143,6 +152,7 @@ class TestTasks(TestCase):
         safe_address = safe_status_0.address
         safe_status_2 = SafeStatusFactory(nonce=2, address=safe_address)
         safe_status_5 = SafeStatusFactory(nonce=5, address=safe_address)
+        SafeLastStatus.objects.update_or_create_from_safe_status(safe_status_5)
         with patch.object(IndexService, "reindex_master_copies") as reindex_mock:
             with patch.object(IndexService, "reprocess_addresses") as reprocess_mock:
                 with self.assertLogs(logger=task_logger) as cm:
