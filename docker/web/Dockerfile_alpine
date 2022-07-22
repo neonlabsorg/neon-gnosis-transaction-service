@@ -9,7 +9,7 @@ COPY requirements.txt ./
 # Signal handling for PID1 https://github.com/krallin/tini
 RUN apk add --update --no-cache tini libpq && \
     apk add --no-cache --virtual .build-dependencies postgresql-dev alpine-sdk libffi-dev && \
-    pip install --no-cache-dir -r requirements.txt && \
+    pip install --use-deprecated=legacy-resolver --no-cache-dir -r requirements.txt && \
     apk del .build-dependencies && \
     find /usr/local \
         \( -type d -a -name test -o -name tests \) \
