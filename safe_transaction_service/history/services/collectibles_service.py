@@ -6,7 +6,6 @@ from urllib.parse import urljoin
 
 from django.conf import settings
 from django.core.cache import cache as django_cache
-from django.db.models import Q
 
 import gevent
 import requests
@@ -248,108 +247,84 @@ class CollectiblesService:
 
         return self._retrieve_metadata_from_uri(collectible.uri)
 
-    def _filter_addresses(
-        self,
-        addresses_with_token_ids: Sequence[Tuple[ChecksumAddress, int]],
-        only_trusted: bool = False,
-        exclude_spam: bool = False,
-    ):
-        """
-        :param addresses_with_token_ids:
-        :param only_trusted:
-        :param exclude_spam:
-        :return: ERC721 tokens filtered by spam or trusted
-        """
-        addresses_set = {
-            address_with_token_id[0]
-            for address_with_token_id in addresses_with_token_ids
-        }
-        base_queryset = Token.objects.filter(
-            Q(address__in=addresses_set) | Q(events_bugged=True)
-        ).order_by("name")
-        if only_trusted:
-            addresses = list(
-                base_queryset.erc721()
-                .filter(trusted=True)
-                .values_list("address", flat=True)
-            )
-        elif exclude_spam:
-            addresses = list(
-                base_queryset.erc721()
-                .filter(spam=False)
-                .values_list("address", flat=True)
-            )
-        else:
-            # There could be some addresses that are not in the list
-            addresses = set()
-            for token in base_queryset:
-                if token.is_erc721():
-                    addresses.add(token.address)
-                if (
-                    token.address in addresses_set
-                ):  # events_bugged tokens might not be on the `addresses_set`
-                    addresses_set.remove(token.address)
-            # Add unknown addresses
-            addresses.union(addresses_set)
-
-        return [
-            address_with_token_id
-            for address_with_token_id in addresses_with_token_ids
-            if address_with_token_id[0] in addresses
-        ]
-
     def get_collectibles(
         self,
         safe_address: ChecksumAddress,
         only_trusted: bool = False,
         exclude_spam: bool = False,
-    ) -> List[Collectible]:
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> Tuple[List[Collectible], int]:
         """
         :param safe_address:
         :param only_trusted: If True, return balance only for trusted tokens
         :param exclude_spam: If True, exclude spam tokens
-        :return: Collectibles using the owner, addresses and the token_ids
+        :param limit: page size
+        :param offset: page position
+        :return: Collectibles (using the owner, addresses and the token_ids) and count (total of collectibles)
         """
 
         # Cache based on the number of erc721 events
         number_erc721_events = ERC721Transfer.objects.to_or_from(safe_address).count()
-        cache_key = f"collectibles:{safe_address}:{only_trusted}:{exclude_spam}:{number_erc721_events}"
+
+        if number_erc721_events == 0:
+            # No need for further DB/Cache calls
+            return [], 0
+
+        cache_key = f"collectibles:{safe_address}:{only_trusted}:{exclude_spam}:{limit}{offset}:{number_erc721_events}"
+        cache_key_count = (
+            f"collectibles_count:{safe_address}:{only_trusted}:{exclude_spam}"
+        )
         if collectibles := django_cache.get(cache_key):
-            return collectibles
+            count = django_cache.get(cache_key_count)
+            return collectibles, count
         else:
-            collectibles = self._get_collectibles(
-                safe_address, only_trusted, exclude_spam
+            collectibles, count = self._get_collectibles(
+                safe_address,
+                only_trusted,
+                exclude_spam,
+                limit=limit,
+                offset=offset,
             )
             django_cache.set(cache_key, collectibles, 60 * 10)  # 10 minutes cache
-            return collectibles
+            django_cache.set(cache_key_count, count, 60 * 10)  # 10 minutes cache
+            return collectibles, count
 
     def _get_collectibles(
         self,
         safe_address: ChecksumAddress,
         only_trusted: bool = False,
         exclude_spam: bool = False,
-    ) -> List[Collectible]:
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> Tuple[List[Collectible], int]:
         """
         :param safe_address:
         :param only_trusted: If True, return balance only for trusted tokens
         :param exclude_spam: If True, exclude spam tokens
-        :return: Collectibles using the owner, addresses and the token_ids
+        :param limit: page size
+        :param offset: page position
+        :return: Collectibles (using the owner, addresses and the token_ids) and count (total of collectibles)
         """
-        unfiltered_addresses_with_token_ids = ERC721Transfer.objects.erc721_owned_by(
-            safe_address
-        )
-        for address, _ in unfiltered_addresses_with_token_ids:
-            # Store tokens in database if not present
-            self.get_token_info(address)  # This is cached
-        addresses_with_token_ids = self._filter_addresses(
-            unfiltered_addresses_with_token_ids, only_trusted, exclude_spam
+        addresses_with_token_ids = ERC721Transfer.objects.erc721_owned_by(
+            safe_address, only_trusted=only_trusted, exclude_spam=exclude_spam
         )
         if not addresses_with_token_ids:
-            return []
+            return [], 0
 
+        for address, _ in addresses_with_token_ids:
+            # Store tokens in database if not present
+            self.get_token_info(address)  # This is cached
+
+        count = len(addresses_with_token_ids)
         logger.debug("Getting token_uris for %s", addresses_with_token_ids)
         # Chunk token uris to prevent stressing the node
         token_uris = []
+
+        # TODO Paginate on DB
+        if limit is not None:
+            addresses_with_token_ids = addresses_with_token_ids[offset : offset + limit]
+
         for addresses_with_token_ids_chunk in chunks(addresses_with_token_ids, 25):
             token_uris.extend(self.get_token_uris(addresses_with_token_ids_chunk))
         logger.debug("Got token_uris for %s", addresses_with_token_ids)
@@ -363,25 +338,33 @@ class CollectiblesService:
             )
             collectibles.append(collectible)
 
-        return collectibles
+        return collectibles, count
 
-    def get_collectibles_with_metadata(
+    def _get_collectibles_with_metadata(
         self,
         safe_address: ChecksumAddress,
         only_trusted: bool = False,
         exclude_spam: bool = False,
-    ) -> List[CollectibleWithMetadata]:
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> Tuple[List[CollectibleWithMetadata], int]:
         """
         Get collectibles using the owner, addresses and the token_ids
 
         :param safe_address:
         :param only_trusted: If True, return balance only for trusted tokens
         :param exclude_spam: If True, exclude spam tokens
-        :return:
+        :param limit: page size
+        :param offset: page position
+        :return: collectibles and count
         """
         collectibles_with_metadata: List[CollectibleWithMetadata] = []
-        collectibles = self.get_collectibles(
-            safe_address, only_trusted=only_trusted, exclude_spam=exclude_spam
+        collectibles, count = self.get_collectibles(
+            safe_address,
+            only_trusted=only_trusted,
+            exclude_spam=exclude_spam,
+            limit=limit,
+            offset=offset,
         )
         jobs = [
             gevent.spawn(self.get_metadata, collectible) for collectible in collectibles
@@ -416,7 +399,47 @@ class CollectiblesService:
                     metadata,
                 )
             )
-        return collectibles_with_metadata
+        return collectibles_with_metadata, count
+
+    def get_collectibles_with_metadata(
+        self,
+        safe_address: ChecksumAddress,
+        only_trusted: bool = False,
+        exclude_spam: bool = False,
+    ) -> List[CollectibleWithMetadata]:
+        """
+         Get collectibles v1 returns no paginated response
+        :param safe_address:
+        :param only_trusted: If True, return balance only for trusted tokens
+        :param exclude_spam: If True, exclude spam tokens
+        :return: collectibles
+        """
+        collectibles, _ = self._get_collectibles_with_metadata(
+            safe_address, only_trusted, exclude_spam
+        )
+        return collectibles
+
+    def get_collectibles_with_metadata_paginated(
+        self,
+        safe_address: ChecksumAddress,
+        only_trusted: bool = False,
+        exclude_spam: bool = False,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[CollectibleWithMetadata], int]:
+        """
+        Get collectibles paginated
+
+        :param safe_address:
+        :param only_trusted: If True, return balance only for trusted tokens
+        :param exclude_spam: If True, exclude spam tokens
+        :param limit: page size
+        :param offset: page position
+        :return: collectibles and count
+        """
+        return self._get_collectibles_with_metadata(
+            safe_address, only_trusted, exclude_spam, limit, offset
+        )
 
     @cachedmethod(cache=operator.attrgetter("cache_token_info"))
     @cache_memoize(60 * 60, prefix="collectibles-get_token_info")  # 1 hour
