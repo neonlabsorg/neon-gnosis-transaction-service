@@ -82,12 +82,6 @@ TASKS = [
         IntervalSchedule.SECONDS,
     ),
     CeleryTaskConfiguration(
-        "safe_transaction_service.history.tasks.index_erc20_events_out_of_sync_task",
-        "Index out of sync ERC20/ERC721 Events",
-        5,
-        IntervalSchedule.MINUTES,
-    ),
-    CeleryTaskConfiguration(
         "safe_transaction_service.history.tasks.reindex_last_hours_task",
         "Reindex master copies for the last hours",
         110,
@@ -103,6 +97,12 @@ TASKS = [
         "safe_transaction_service.contracts.tasks.create_missing_contracts_with_metadata_task",
         "Index contract names and ABIs",
         1,
+        IntervalSchedule.HOURS,
+    ),
+    CeleryTaskConfiguration(
+        "safe_transaction_service.contracts.tasks.create_missing_multisend_contracts_with_metadata_task",
+        "Index contract names and ABIs from MultiSend transactions",
+        6,
         IntervalSchedule.HOURS,
     ),
     CeleryTaskConfiguration(
@@ -290,6 +290,20 @@ MASTER_COPIES: Dict[EthereumNetwork, List[Tuple[str, int, str]]] = {
         ("0xfb1bffC9d739B8D520DaF37dF666da4C687191EA", 93204, "1.3.0+L2"),
         ("0x69f4D1788e39c87893C980c06EdF4b7f686e2938", 93168, "1.3.0"),
     ],
+    EthereumNetwork.KLAY_BAOBAB: [
+        ("0xfb1bffC9d739B8D520DaF37dF666da4C687191EA", 93821635, "1.3.0+L2"),
+    ],
+    EthereumNetwork.KLAY_CYPRESS: [
+        ("0xfb1bffC9d739B8D520DaF37dF666da4C687191EA", 93507490, "1.3.0+L2"),
+    ],
+    EthereumNetwork.MILKOMEDA_C1_TESTNET: [
+        ("0x3E5c63644E683549055b9Be8653de26E0B4CD36E", 5080339, "1.3.0+L2"),
+        ("0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552", 5080357, "1.3.0"),
+    ],
+    EthereumNetwork.MILKOMEDA_C1_MAINNET: [
+        ("0x3E5c63644E683549055b9Be8653de26E0B4CD36E", 4896727, "1.3.0+L2"),
+        ("0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552", 4896733, "1.3.0"),
+    ],
 }
 
 PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
@@ -416,6 +430,18 @@ PROXY_FACTORIES: Dict[EthereumNetwork, List[Tuple[str, int]]] = {
     ],
     EthereumNetwork.GODWOKEN_TESTNET: [
         ("0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC", 93108),  # v1.3.0
+    ],
+    EthereumNetwork.KLAY_BAOBAB: [
+        ("0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC", 93821613),  # v1.3.0
+    ],
+    EthereumNetwork.KLAY_CYPRESS: [
+        ("0xC22834581EbC8527d974F8a1c97E1bEA4EF910BC", 93506870),  # v1.3.0
+    ],
+    EthereumNetwork.MILKOMEDA_C1_TESTNET: [
+        ("0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2", 5080303),  # v1.3.0
+    ],
+    EthereumNetwork.MILKOMEDA_C1_MAINNET: [
+        ("0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2", 4896699),  # v1.3.0
     ],
 }
 

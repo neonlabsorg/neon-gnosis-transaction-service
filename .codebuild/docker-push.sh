@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Get reposotory URI from argument
+# Get reposotory URI from  argument
 repository=$1
 
 # Push Docker images to the repository
