@@ -44,6 +44,10 @@ class CoingeckoClient:
             self.asset_platform = "xdai"
         elif network == EthereumNetwork.FUSE_MAINNET:
             self.asset_platform = "fuse"
+        elif network == EthereumNetwork.KCC_MAINNET:
+            self.asset_platform = "kucoin-community-chain"
+        elif network == EthereumNetwork.METIS:
+            self.asset_platform = "metis-andromeda"
         else:
             self.asset_platform = "ethereum"
 
@@ -61,6 +65,8 @@ class CoingeckoClient:
             EthereumNetwork.OPTIMISTIC,
             EthereumNetwork.XDAI,
             EthereumNetwork.FUSE_MAINNET,
+            EthereumNetwork.KCC_MAINNET,
+            EthereumNetwork.METIS,
         )
 
     def _do_request(self, url: str) -> Dict[str, Any]:
@@ -132,6 +138,9 @@ class CoingeckoClient:
         if token_info:
             return token_info["image"]["large"]
 
+    def get_ada_usd_price(self) -> float:
+        return self.get_price("cardano")
+
     def get_avax_usd_price(self) -> float:
         return self.get_price("avalanche-2")
 
@@ -158,3 +167,9 @@ class CoingeckoClient:
 
     def get_fuse_usd_price(self) -> float:
         return self.get_price("fuse-network-token")
+
+    def get_kcs_usd_price(self) -> float:
+        return self.get_price("kucoin-shares")
+
+    def get_metis_usd_price(self) -> float:
+        return self.get_price("metis-token")
