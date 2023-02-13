@@ -36,8 +36,6 @@ class CoingeckoClient:
             self.asset_platform = "moonbeam"
         elif network == EthereumNetwork.MOONRIVER:
             self.asset_platform = "moonriver"
-        elif network == EthereumNetwork.MOONBASE_ALPHA:
-            self.asset_platform = "moonriver"
         elif network == EthereumNetwork.OPTIMISTIC:
             self.asset_platform = "optimistic-ethereum"
         elif network == EthereumNetwork.GNOSIS:
@@ -67,7 +65,6 @@ class CoingeckoClient:
             EthereumNetwork.METIS_ANDROMEDA_MAINNET,
             EthereumNetwork.MOONBEAM,
             EthereumNetwork.MOONRIVER,
-            EthereumNetwork.MOONBASE_ALPHA,
         )
 
     def _do_request(self, url: str) -> Dict[str, Any]:
