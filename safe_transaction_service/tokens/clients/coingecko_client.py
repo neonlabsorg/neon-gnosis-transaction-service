@@ -36,7 +36,7 @@ class CoingeckoClient:
             self.asset_platform = "moonbeam"
         elif network == EthereumNetwork.MOONRIVER:
             self.asset_platform = "moonriver"
-        elif network == EthereumNetwork.OPTIMISTIC:
+        elif network == EthereumNetwork.OPTIMISM:
             self.asset_platform = "optimistic-ethereum"
         elif network == EthereumNetwork.GNOSIS:
             self.asset_platform = "xdai"
