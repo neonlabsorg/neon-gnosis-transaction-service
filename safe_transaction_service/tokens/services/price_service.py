@@ -203,6 +203,9 @@ class PriceService:
     def get_cronos_usd_price(self) -> float:
         return self.kucoin_client.get_cro_usd_price()
 
+    def get_xdc_usd_price(self) -> float:
+        return self.kucoin_client.get_xdc_usd_price()
+
     def get_kcs_usd_price(self) -> float:
         try:
             return self.kucoin_client.get_kcs_usd_price()
@@ -220,34 +223,34 @@ class PriceService:
 
         :return: USD price for Ether
         """
-        if self.ethereum_network == EthereumNetwork.XDAI:
+        if self.ethereum_network == EthereumNetwork.GNOSIS:
             try:
                 return self.kraken_client.get_dai_usd_price()
             except CannotGetPrice:
                 return 1  # DAI/USD should be close to 1
         elif self.ethereum_network in (
             EthereumNetwork.ENERGY_WEB_CHAIN,
-            EthereumNetwork.VOLTA,
+            EthereumNetwork.ENERGY_WEB_VOLTA_TESTNET,
         ):
             return self.get_ewt_usd_price()
-        elif self.ethereum_network in (EthereumNetwork.MATIC, EthereumNetwork.MUMBAI):
+        elif self.ethereum_network in (EthereumNetwork.POLYGON, EthereumNetwork.MUMBAI):
             return self.get_matic_usd_price()
         elif self.ethereum_network in (
-            EthereumNetwork.MOON_MOONRIVER,
-            EthereumNetwork.MOON_MOONBASE,
+            EthereumNetwork.MOONRIVER,
+            EthereumNetwork.MOONBASE_ALPHA,
         ):
             return self.get_movr_usd_price()
-        elif self.ethereum_network == EthereumNetwork.MOON_MOONBEAM:
+        elif self.ethereum_network == EthereumNetwork.MOONBEAM:
             return self.get_mbeam_usd_price()
         elif self.ethereum_network == EthereumNetwork.BINANCE:
             return self.get_binance_usd_price()
         elif self.ethereum_network in (
-            EthereumNetwork.GATHER_DEVNET,
-            EthereumNetwork.GATHER_TESTNET,
-            EthereumNetwork.GATHER_MAINNET,
+            EthereumNetwork.GATHER_DEVNET_NETWORK,
+            EthereumNetwork.GATHER_TESTNET_NETWORK,
+            EthereumNetwork.GATHER_MAINNET_NETWORK,
         ):
             return self.coingecko_client.get_gather_usd_price()
-        elif self.ethereum_network == EthereumNetwork.AVALANCHE:
+        elif self.ethereum_network == EthereumNetwork.AVALANCHE_C_CHAIN:
             return self.get_avalanche_usd_price()
         elif self.ethereum_network in (
             EthereumNetwork.MILKOMEDA_C1_TESTNET,
@@ -255,19 +258,18 @@ class PriceService:
         ):
             return self.get_cardano_usd_price()
         elif self.ethereum_network in (
-            EthereumNetwork.AURORA,
-            EthereumNetwork.AURORA_BETANET,
-            EthereumNetwork.ARBITRUM_TESTNET,
+            EthereumNetwork.AURORA_MAINNET,
+            EthereumNetwork.ARBITRUM_RINKEBY,
         ):
             return self.get_aurora_usd_price()
         elif self.ethereum_network in (
             EthereumNetwork.CRONOS_TESTNET,
-            EthereumNetwork.CRONOS_MAINNET,
+            EthereumNetwork.CRONOS_MAINNET_BETA,
         ):
             return self.get_cronos_usd_price()
         elif self.ethereum_network in (
             EthereumNetwork.FUSE_MAINNET,
-            EthereumNetwork.FUSE_SPARK,
+            EthereumNetwork.FUSE_SPARKNET,
         ):
             return self.coingecko_client.get_fuse_usd_price()
         elif self.ethereum_network in (
@@ -276,9 +278,9 @@ class PriceService:
         ):
             return self.get_kcs_usd_price()
         elif self.ethereum_network in (
-            EthereumNetwork.METIS,
-            EthereumNetwork.METIS_TESTNET,
+            EthereumNetwork.METIS_ANDROMEDA_MAINNET,
             EthereumNetwork.METIS_GOERLI_TESTNET,
+            EthereumNetwork.METIS_STARDUST_TESTNET,
         ):
             return self.coingecko_client.get_metis_usd_price()
         elif self.ethereum_network in (
@@ -286,6 +288,17 @@ class PriceService:
             EthereumNetwork.MILKOMEDA_A1_MAINNET,
         ):
             return self.get_algorand_usd_price()
+        elif self.ethereum_network in (
+            EthereumNetwork.CELO_MAINNET,
+            EthereumNetwork.CELO_ALFAJORES_TESTNET,
+            EthereumNetwork.CELO_BAKLAVA_TESTNET,
+        ):
+            return self.kucoin_client.get_celo_usd_price()
+        elif self.ethereum_network in (
+            EthereumNetwork.XINFIN_XDC_NETWORK,
+            EthereumNetwork.XDC_APOTHEM_NETWORK,
+        ):
+            return self.get_xdc_usd_price()
         else:
             try:
                 return self.kraken_client.get_eth_usd_price()
@@ -309,9 +322,16 @@ class PriceService:
 
         for oracle in self.enabled_price_oracles:
             try:
-                return oracle.get_price(token_address)
-            except OracleException:
+                eth_value = oracle.get_price(token_address)
                 logger.info(
+                    "Retrieved eth-value=%.4f for token-address=%s from %s",
+                    eth_value,
+                    token_address,
+                    oracle.__class__.__name__,
+                )
+                return eth_value
+            except OracleException:
+                logger.debug(
                     "Cannot get eth value for token-address=%s from %s",
                     token_address,
                     oracle.__class__.__name__,
@@ -320,9 +340,16 @@ class PriceService:
         # Try pool tokens
         for oracle in self.enabled_price_pool_oracles:
             try:
-                return oracle.get_pool_token_price(token_address)
-            except OracleException:
+                eth_value = oracle.get_pool_token_price(token_address)
                 logger.info(
+                    "Retrieved eth-value=%.4f for token-address=%s from %s",
+                    eth_value,
+                    token_address,
+                    oracle.__class__.__name__,
+                )
+                return eth_value
+            except OracleException:
+                logger.debug(
                     "Cannot get eth value for token-address=%s from %s",
                     token_address,
                     oracle.__class__.__name__,
@@ -356,9 +383,16 @@ class PriceService:
         """
         for oracle in self.enabled_composed_price_oracles:
             try:
-                return oracle.get_underlying_tokens(token_address)
-            except OracleException:
+                underlying_tokens = oracle.get_underlying_tokens(token_address)
                 logger.info(
+                    "Retrieved underlying tokens %s for token-address=%s from %s",
+                    underlying_tokens,
+                    token_address,
+                    oracle.__class__.__name__,
+                )
+                return underlying_tokens
+            except OracleException:
+                logger.debug(
                     "Cannot get an underlying token for token-address=%s from %s",
                     token_address,
                     oracle.__class__.__name__,
